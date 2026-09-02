@@ -36,8 +36,8 @@ dependencies {
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'com.mysql:mysql-connector-j'
 
-    // HTML 파싱 (CGV 스크래핑)
-    implementation 'org.springframework.ai:spring-ai-jsoup-document-reader'
+    // Playwright (헤드리스 브라우저 - Cloudflare 우회)
+    implementation 'com.microsoft.playwright:playwright:1.45.0'
 
     // Lombok
     compileOnly 'org.projectlombok:lombok'

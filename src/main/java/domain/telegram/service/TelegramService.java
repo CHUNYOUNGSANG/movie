@@ -1,49 +1,33 @@
 package domain.telegram.service;
 
 import domain.movie.dto.ScreeningResult;
-import domain.telegram.entity.Subscriber;
-import domain.telegram.repository.SubscriberRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * SRP : 텔레그램 Bot API 메시지 발송만 담당.
- * sendAlert() → DB의 전체 활성 구독자에게 브로드캐스트.
- * sendMessage(chatId, text) → 특정 사용자에게 직접 발송 (폴링 응답용).
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class TelegramService {
+public class TelegramService implements MessageSender {
 
     private final RestTemplate restTemplate;
-    private final SubscriberRepository subscriberRepository;
 
     @Value("${telegram.bot.token}")
     private String botToken;
 
-    /** 새 상영 발견 시 모든 활성 구독자에게 알림 발송 */
-    public void sendAlert(ScreeningResult result) {
-        List<Subscriber> subscribers = subscriberRepository.findAllByActiveTrue();
-        if (subscribers.isEmpty()) {
-            log.debug("구독자 없음 — 알림 스킵");
-            return;
-        }
-        String message = format(result);
-        subscribers.forEach(sub -> sendMessage(sub.getChatId(), message));
-    }
-
-    /** 특정 chatId에 메시지 발송 (폴링 응답, 개별 알림용) */
+    @Override
     public void sendMessage(String chatId, String text) {
         if (botToken.startsWith("YOUR_")) {
-            log.warn("[텔레그램 미설정] → chatId={}, 메시지:\n{}", chatId, text);
+            log.warn("[텔레그램 미설정] chatId={}, 메시지:\n{}", chatId, text);
             return;
         }
 
@@ -61,22 +45,37 @@ public class TelegramService {
         }
     }
 
-    private String format(ScreeningResult r) {
-        String seats = r.availableSeats() < 0 ? "정보 없음" : r.availableSeats() + "석";
-        return String.format("""
-                🎬 <b>새 상영 알림</b>
+    @Async("notificationExecutor")
+    @Override
+    public void sendAlerts(String chatId, List<ScreeningResult> results) {
+        if (results.isEmpty()) return;
+        sendMessage(chatId, formatAll(results));
+    }
 
-                영화: %s
-                영화관: %s | %s
-                일시: %s %s
-                잔여석: %s
+    private String formatAll(List<ScreeningResult> results) {
+        ScreeningResult first = results.get(0);
 
-                👉 <a href="%s">예매하기</a>""",
-                r.movieTitle(),
-                r.cinema(), r.theater(),
-                r.date(), r.time() != null ? r.time() : "",
-                seats,
-                r.bookingUrl()
-        );
+        StringBuilder sb = new StringBuilder();
+        sb.append("🎬 <b>예매 오픈 알림!</b>\n\n");
+        sb.append("영화: <b>").append(first.movieTitle()).append("</b>\n");
+        sb.append("날짜: ").append(first.date()).append("\n");
+
+        // 극장별로 그룹핑해서 출력
+        Map<String, List<ScreeningResult>> byTheater = new LinkedHashMap<>();
+        for (ScreeningResult r : results) {
+            byTheater.computeIfAbsent(r.theater(), k -> new ArrayList<>()).add(r);
+        }
+
+        for (Map.Entry<String, List<ScreeningResult>> entry : byTheater.entrySet()) {
+            sb.append("\n📍 <b>").append(entry.getKey()).append("</b>\n");
+            for (ScreeningResult r : entry.getValue()) {
+                String time  = r.time() != null ? r.time().toString() : "미정";
+                String seats = r.availableSeats() < 0 ? "" : " (잔여 " + r.availableSeats() + "석)";
+                sb.append("  ▸ ").append(time).append(seats).append("\n");
+            }
+        }
+
+        sb.append("\n👉 <a href=\"").append(first.bookingUrl()).append("\">예매하기</a>");
+        return sb.toString();
     }
 }

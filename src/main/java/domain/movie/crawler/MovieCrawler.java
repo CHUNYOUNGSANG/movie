@@ -17,4 +17,9 @@ public interface MovieCrawler {
     String getCinemaName();
 
     List<ScreeningResult> crawl(String movieTitle, LocalDate date);
+
+    // siteHint: 영화관별 극장 식별자 (CGV=siteNo). null이면 전체 극장 조회 시도
+    default List<ScreeningResult> crawl(String movieTitle, String siteHint, LocalDate date) {
+        return crawl(movieTitle, date);
+    }
 }
