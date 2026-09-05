@@ -15,8 +15,8 @@ public class NotificationHistory {
     private Long historyId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "request_id")
-    private NotificationRequest request;
+    @JoinColumn(name = "subscription_id")
+    private NotificationSubscription subscription;
 
     @CreationTimestamp
     private LocalDateTime sentAt;

@@ -1,11 +1,9 @@
 package domain.telegram.service;
 
 import domain.notification.dto.NotificationRegisterRequest;
-import domain.notification.entity.NotificationRequest;
-import domain.notification.repository.NotificationRequestRepository;
+import domain.notification.entity.NotificationSubscription;
 import domain.notification.service.NotificationService;
-import domain.user.entity.User;
-import domain.user.repository.UserRepository;
+import domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +17,7 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
 
 @Slf4j
 @Service
@@ -26,10 +25,9 @@ import java.util.concurrent.atomic.AtomicLong;
 public class TelegramPollingService {
 
     private final RestTemplate restTemplate;
-    private final UserRepository userRepository;
-    private final NotificationRequestRepository notificationRequestRepository;
+    private final UserService userService;
     private final NotificationService notificationService;
-    private final TelegramService telegramService;
+    private final MessageSender messageSender;   // DIP: 발송은 추상화에만 의존
 
     @Value("${telegram.bot.token}")
     private String botToken;
@@ -40,10 +38,11 @@ public class TelegramPollingService {
             🎬 <b>영화 예매 알리미 사용법</b>
 
             <b>기본 명령어</b>
-            /start — 알림 구독 시작
-            /stop  — 알림 구독 해제
-            /list  — 내 알림 신청 목록
-            /help  — 사용법 안내
+            /start   — 알림 구독 시작
+            /stop    — 알림 구독 해제
+            /list    — 대기 중인 알림 목록
+            /history — 완료된 알림 목록
+            /help    — 사용법 안내
 
             <b>알림 신청</b>
             /add [영화제목] [날짜] [지점(선택)] [관종류(선택)]
@@ -100,72 +99,79 @@ public class TelegramPollingService {
 
         if (text.startsWith("/start"))        handleStart(chatId, username);
         else if (text.startsWith("/stop"))    handleStop(chatId);
+        else if (text.startsWith("/history")) handleHistory(chatId);
         else if (text.startsWith("/list"))    handleList(chatId);
         else if (text.startsWith("/add"))     handleAdd(chatId, text);
         else if (text.startsWith("/cancel"))  handleCancel(chatId, text);
-        else if (text.startsWith("/help"))    telegramService.sendMessage(chatId, HELP_TEXT);
-        else telegramService.sendMessage(chatId, HELP_TEXT);
+        else if (text.startsWith("/help"))    messageSender.sendMessage(chatId, HELP_TEXT);
+        else messageSender.sendMessage(chatId, HELP_TEXT);
     }
 
     // ── 명령어 핸들러 ─────────────────────────────────────────
 
     private void handleStart(String chatId, String username) {
-        userRepository.findByChatId(chatId).ifPresentOrElse(
-                user -> {
-                    if (!user.isActive()) {
-                        user.setActive(true);
-                        telegramService.sendMessage(chatId, "✅ 구독이 재활성화됐습니다!\n\n" + HELP_TEXT);
-                    } else {
-                        telegramService.sendMessage(chatId, "이미 구독 중입니다 😊\n\n" + HELP_TEXT);
-                    }
-                },
-                () -> {
-                    userRepository.save(User.builder()
-                            .chatId(chatId).username(username).active(true).build());
-                    log.info("신규 구독: chatId={}, username={}", chatId, username);
-                    telegramService.sendMessage(chatId, "🎉 구독 완료!\n\n" + HELP_TEXT);
-                }
-        );
+        UserService.ActivationResult result = userService.activate(chatId, username);
+        switch (result.status()) {
+            case CREATED -> {
+                log.info("신규 구독: chatId={}, username={}", chatId, username);
+                messageSender.sendMessage(chatId, "🎉 구독 완료!\n\n" + HELP_TEXT);
+            }
+            case REACTIVATED -> messageSender.sendMessage(chatId, "✅ 구독이 재활성화됐습니다!\n\n" + HELP_TEXT);
+            case ALREADY_ACTIVE -> messageSender.sendMessage(chatId, "이미 구독 중입니다 😊\n\n" + HELP_TEXT);
+        }
     }
 
     private void handleStop(String chatId) {
-        userRepository.findByChatId(chatId).ifPresentOrElse(
+        userService.deactivate(chatId).ifPresentOrElse(
                 user -> {
-                    user.setActive(false);
                     log.info("구독 해제: chatId={}", chatId);
-                    telegramService.sendMessage(chatId,
+                    messageSender.sendMessage(chatId,
                             "🔕 구독이 해제됐습니다. 다시 받으시려면 /start 를 입력하세요.");
                 },
-                () -> telegramService.sendMessage(chatId, "구독 중이 아닙니다.")
+                () -> messageSender.sendMessage(chatId, "구독 중이 아닙니다.")
         );
     }
 
     private void handleList(String chatId) {
-        userRepository.findByChatId(chatId).ifPresentOrElse(
+        respondWithSubscriptions(chatId, sub -> !sub.isTriggered(),
+                "📋 <b>대기 중인 알림</b>\n\n",
+                "대기 중인 알림이 없습니다.\n/add 명령어로 등록해보세요!\n완료된 알림 보기: /history",
+                "\n취소하려면: /cancel [번호]\n완료된 알림 보기: /history");
+    }
+
+    private void handleHistory(String chatId) {
+        respondWithSubscriptions(chatId, NotificationSubscription::isTriggered,
+                "✅ <b>완료된 알림</b>\n\n",
+                "완료된 알림이 없습니다.",
+                "");
+    }
+
+    private void respondWithSubscriptions(String chatId, Predicate<NotificationSubscription> filter,
+                                           String header, String emptyMessage, String footer) {
+        userService.findByChatId(chatId).ifPresentOrElse(
                 user -> {
-                    List<NotificationRequest> requests =
-                            notificationRequestRepository.findByUser(user);
-                    if (requests.isEmpty()) {
-                        telegramService.sendMessage(chatId,
-                                "등록된 알림이 없습니다.\n/add 명령어로 등록해보세요!");
+                    List<NotificationSubscription> subscriptions = notificationService.findByUser(user).stream()
+                            .filter(filter)
+                            .toList();
+                    if (subscriptions.isEmpty()) {
+                        messageSender.sendMessage(chatId, emptyMessage);
                         return;
                     }
-                    StringBuilder sb = new StringBuilder("📋 <b>내 알림 목록</b>\n\n");
-                    for (NotificationRequest req : requests) {
+                    StringBuilder sb = new StringBuilder(header);
+                    for (NotificationSubscription sub : subscriptions) {
                         sb.append(String.format(
-                                "#%d %s | %s | %s | %s  %s\n",
-                                req.getRequestId(),
-                                req.getMovie().getTitle(),
-                                req.getTargetDate(),
-                                req.getTheater() != null ? req.getTheater().getBranchName() : "전체 지점",
-                                req.getScreenType() != null ? req.getScreenType().getTypeName() : "전체 관",
-                                req.isTriggered() ? "✅완료" : "⏳대기"
+                                "#%d %s | %s | %s | %s\n",
+                                sub.getSubscriptionId(),
+                                sub.getMovie().getTitle(),
+                                sub.getTargetDate(),
+                                sub.getTheater() != null ? sub.getTheater().getBranchName() : "전체 지점",
+                                sub.getScreenType() != null ? sub.getScreenType().getTypeName() : "전체 관"
                         ));
                     }
-                    sb.append("\n취소하려면: /cancel [번호]");
-                    telegramService.sendMessage(chatId, sb.toString());
+                    sb.append(footer);
+                    messageSender.sendMessage(chatId, sb.toString());
                 },
-                () -> telegramService.sendMessage(chatId, "/start 를 먼저 입력해주세요.")
+                () -> messageSender.sendMessage(chatId, "/start 를 먼저 입력해주세요.")
         );
     }
 
@@ -173,7 +179,7 @@ public class TelegramPollingService {
         // /add [영화제목] [날짜] [지점(선택)] [관종류(선택)]
         String[] parts = text.substring("/add".length()).trim().split("\\s+");
         if (parts.length < 2 || parts[0].isBlank()) {
-            telegramService.sendMessage(chatId, """
+            messageSender.sendMessage(chatId, """
                     ❌ 형식이 올바르지 않습니다.
 
                     사용법: /add [영화제목] [날짜] [지점(선택)] [관종류(선택)]
@@ -186,7 +192,7 @@ public class TelegramPollingService {
         try {
             targetDate = LocalDate.parse(parts[1]);
         } catch (DateTimeParseException e) {
-            telegramService.sendMessage(chatId,
+            messageSender.sendMessage(chatId,
                     "❌ 날짜 형식이 올바르지 않습니다.\n날짜는 YYYY-MM-DD 형식으로 입력해주세요.\n예시: 2026-09-04");
             return;
         }
@@ -199,7 +205,7 @@ public class TelegramPollingService {
                     new NotificationRegisterRequest(
                             chatId, movieTitle, "CGV", branchName, screenTypeName, targetDate));
 
-            telegramService.sendMessage(chatId, String.format("""
+            messageSender.sendMessage(chatId, String.format("""
                     ✅ <b>알림 신청 완료!</b>
 
                     영화: %s
@@ -214,27 +220,29 @@ public class TelegramPollingService {
             ));
             log.info("알림 신청 (텔레그램): chatId={}, movie={}, date={}", chatId, movieTitle, targetDate);
         } catch (IllegalArgumentException e) {
-            telegramService.sendMessage(chatId, "❌ " + e.getMessage());
+            messageSender.sendMessage(chatId, "❌ " + e.getMessage());
         }
     }
 
     private void handleCancel(String chatId, String text) {
         String idStr = text.substring("/cancel".length()).trim();
         if (idStr.isBlank()) {
-            telegramService.sendMessage(chatId,
+            messageSender.sendMessage(chatId,
                     "취소할 번호를 입력해주세요.\n예시: /cancel 1\n\n목록 확인: /list");
             return;
         }
         try {
-            Long requestId = Long.parseLong(idStr);
-            notificationService.cancel(requestId);
-            telegramService.sendMessage(chatId, "🗑 #" + requestId + " 알림이 취소됐습니다.");
+            Long subscriptionId = Long.parseLong(idStr);
+            notificationService.cancel(subscriptionId, chatId);
+            messageSender.sendMessage(chatId, "🗑 #" + subscriptionId + " 알림이 취소됐습니다.");
         } catch (NumberFormatException e) {
-            telegramService.sendMessage(chatId,
+            messageSender.sendMessage(chatId,
                     "❌ 번호가 올바르지 않습니다.\n예시: /cancel 1\n\n목록 확인: /list");
         } catch (IllegalArgumentException e) {
-            telegramService.sendMessage(chatId,
+            messageSender.sendMessage(chatId,
                     "❌ 해당 번호의 알림을 찾을 수 없습니다.\n현재 목록을 확인해주세요: /list");
+        } catch (SecurityException e) {
+            messageSender.sendMessage(chatId, "❌ " + e.getMessage());
         }
     }
 }

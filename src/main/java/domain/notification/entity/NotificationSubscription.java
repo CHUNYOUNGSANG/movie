@@ -12,12 +12,12 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "notification_requests")
+@Table(name = "notification_subscriptions")
 @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
-public class NotificationRequest {
+public class NotificationSubscription {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long requestId;
+    private Long subscriptionId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")

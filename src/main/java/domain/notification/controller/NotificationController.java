@@ -1,7 +1,7 @@
 package domain.notification.controller;
 
 import domain.notification.dto.NotificationRegisterRequest;
-import domain.notification.entity.NotificationRequest;
+import domain.notification.entity.NotificationSubscription;
 import domain.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,19 +22,19 @@ public class NotificationController {
     private final NotificationService notificationService;
 
     @PostMapping
-    public ResponseEntity<NotificationRequest> register(
+    public ResponseEntity<NotificationSubscription> register(
             @RequestBody NotificationRegisterRequest request) {
         return ResponseEntity.ok(notificationService.register(request));
     }
 
     @GetMapping
-    public ResponseEntity<List<NotificationRequest>> findAll() {
+    public ResponseEntity<List<NotificationSubscription>> findAll() {
         return ResponseEntity.ok(notificationService.findAll());
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> cancel(@PathVariable Long id) {
-        notificationService.cancel(id);
+    public ResponseEntity<Void> cancel(@PathVariable Long id, @RequestParam String chatId) {
+        notificationService.cancel(id, chatId);
         return ResponseEntity.noContent().build();
     }
 }

@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: moviebot
+  datasource:
+    url: jdbc:h2:mem:moviebotdb;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 3
+      connection-timeout: 30000
+      idle-timeout: 600000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  task:
+    scheduling:
+      pool:
+        size: 5
+
+# ── 텔레그램 봇 ─────────────────────────────────────────────
+# @BotFather → /newbot 으로 토큰 발급 후 TELEGRAM_BOT_TOKEN 환경변수로 주입
+# docker-compose는 .env에서 자동 주입. 로컬 직접 실행/테스트는 spring-dotenv가 .env를 읽어서 주입
+# 구독자는 봇에 /start 메시지를 보내 자동 등록됩니다
+telegram:
+  bot:
+    token: ${TELEGRAM_BOT_TOKEN}
+
+# ── 폴링 주기 (기본: 5분마다) ────────────────────────────────
+movie:
+  check:
+    cron: "0 */5 * * * *"
+
+# ── 로그 ────────────────────────────────────────────────────
+logging:
+  level:
+    com.example.moviebot: INFO

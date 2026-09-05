@@ -1,6 +1,7 @@
 package domain.telegram.service;
 
 import domain.movie.dto.ScreeningResult;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,6 +24,32 @@ public class TelegramService implements MessageSender {
 
     @Value("${telegram.bot.token}")
     private String botToken;
+
+    // 텔레그램 "/" 자동완성 메뉴에 노출할 명령어 목록 (텔레그램 규칙상 소문자 영문/숫자/밑줄만 허용)
+    private static final List<Map<String, String>> COMMANDS = List.of(
+            Map.of("command", "start", "description", "알림 구독 시작"),
+            Map.of("command", "add", "description", "영화 알림 신청"),
+            Map.of("command", "list", "description", "대기 중인 알림 목록"),
+            Map.of("command", "history", "description", "완료된 알림 목록"),
+            Map.of("command", "cancel", "description", "알림 취소"),
+            Map.of("command", "stop", "description", "알림 구독 해제"),
+            Map.of("command", "help", "description", "사용법 안내")
+    );
+
+    @PostConstruct
+    public void registerCommands() {
+        if (botToken.startsWith("YOUR_")) {
+            log.warn("[텔레그램 미설정] 자동완성 메뉴 등록 스킵");
+            return;
+        }
+        String url = "https://api.telegram.org/bot" + botToken + "/setMyCommands";
+        try {
+            restTemplate.postForObject(url, Map.of("commands", COMMANDS), Map.class);
+            log.info("텔레그램 자동완성 메뉴 등록 완료");
+        } catch (Exception e) {
+            log.error("텔레그램 자동완성 메뉴 등록 실패: {}", e.getMessage());
+        }
+    }
 
     @Override
     public void sendMessage(String chatId, String text) {

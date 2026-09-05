@@ -1,6 +1,6 @@
 package domain.notification.repository;
 
-import domain.notification.entity.NotificationRequest;
+import domain.notification.entity.NotificationSubscription;
 import domain.user.entity.User;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -8,14 +8,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
 
-public interface NotificationRequestRepository extends JpaRepository<NotificationRequest, Long> {
+public interface NotificationSubscriptionRepository extends JpaRepository<NotificationSubscription, Long> {
 
     @EntityGraph(attributePaths = {"movie", "theater", "screenType", "user"})
-    List<NotificationRequest> findAllByTriggeredFalse();
+    List<NotificationSubscription> findAllByTriggeredFalse();
 
     @EntityGraph(attributePaths = {"movie", "theater", "screenType"})
-    List<NotificationRequest> findByUser(User user);
+    List<NotificationSubscription> findByUser(User user);
 
     @EntityGraph(attributePaths = {"movie", "theater", "screenType", "user"})
-    Optional<NotificationRequest> findById(Long id);
+    Optional<NotificationSubscription> findById(Long id);
 }

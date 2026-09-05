@@ -28,6 +28,9 @@ ext {
 }
 
 dependencies {
+    // .env 파일을 Spring Environment에 자동 로드 (로컬 직접 실행 시 docker-compose와 동일하게 .env 사용)
+    implementation 'me.paulschwarz:spring-dotenv:5.1.0'
+
     // Web
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 
@@ -35,6 +38,11 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'com.mysql:mysql-connector-j'
+
+    // DB 마이그레이션 (ddl-auto 대신 명시적 스키마 버전 관리)
+    implementation 'org.springframework.boot:spring-boot-flyway'
+    implementation 'org.flywaydb:flyway-core'
+    runtimeOnly 'org.flywaydb:flyway-mysql'
 
     // Playwright (헤드리스 브라우저 - Cloudflare 우회)
     implementation 'com.microsoft.playwright:playwright:1.45.0'

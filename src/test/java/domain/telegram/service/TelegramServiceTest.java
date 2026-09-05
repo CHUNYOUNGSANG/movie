@@ -13,6 +13,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
@@ -50,14 +51,14 @@ class TelegramServiceTest {
     }
 
     @Test
-    @DisplayName("sendAlert() 는 ScreeningResult 정보로 API 를 호출한다")
-    void sendAlert_callsApiWithResult() {
+    @DisplayName("sendAlerts() 는 ScreeningResult 정보로 API 를 호출한다")
+    void sendAlerts_callsApiWithResult() {
         ScreeningResult result = new ScreeningResult(
                 "CGV", "강남", "파묘",
                 LocalDate.of(2026, 9, 10), LocalTime.of(14, 30),
                 50, true, "https://cgv.co.kr");
 
-        telegramService.sendAlert("111", result);
+        telegramService.sendAlerts("111", List.of(result));
 
         then(restTemplate).should().postForObject(anyString(), any(Map.class), eq(Map.class));
     }
