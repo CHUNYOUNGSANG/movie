@@ -36,3 +36,8 @@ out/
 
 ### VS Code ###
 .vscode/
+
+# Claude Code 설정 파일 제외
+CLAUDE.md
+CLAUDE.local.md
+.claude/
