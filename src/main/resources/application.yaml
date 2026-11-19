@@ -35,6 +35,8 @@ spring:
 telegram:
   bot:
     token: ${TELEGRAM_BOT_TOKEN}
+  rate-limit:
+    per-second: 25   # 전역 발송 제한(초당 약 30건)보다 여유 있게. 서버 1대 기준
 
 # ── 폴링 주기 (기본: 5분마다) ────────────────────────────────
 movie:

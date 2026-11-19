@@ -24,6 +24,7 @@ import java.util.Map;
 public class TelegramService implements MessageSender {
 
     private final RestTemplate restTemplate;
+    private final TelegramRateLimiter rateLimiter;
 
     @Value("${telegram.bot.token}")
     private String botToken;
@@ -118,7 +119,22 @@ public class TelegramService implements MessageSender {
         body.put("text", text);
         body.put("parse_mode", "HTML");
 
-        restTemplate.postForObject(url, body, Map.class);
+        try {
+            rateLimiter.acquire();   // 전역 발송 속도 제한 (초당 약 30건) 안에서 고르게 분산
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("발송 대기 중 인터럽트", e);
+        }
+        try {
+            restTemplate.postForObject(url, body, Map.class);
+        } catch (HttpClientErrorException e) {
+            Duration retryAfter = retryAfter(e);
+            if (retryAfter != null) {
+                rateLimiter.pause(retryAfter);   // flood control 중에는 다른 스레드도 보내지 않도록 전체 멈춤
+                log.warn("텔레그램 속도 제한(429): {}초 동안 발송 중단", retryAfter.toSeconds());
+            }
+            throw e;
+        }
         log.info("텔레그램 전송 완료 → chatId={}", chatId);
     }
 
