@@ -9,6 +9,7 @@ import domain.movie.repository.ScheduleRepository;
 import domain.movie.repository.ScreenTypeRepository;
 import domain.movie.repository.TheaterRepository;
 import domain.notification.event.NotificationSendListener;
+import domain.notification.outbox.NotificationOutboxRepository;
 import domain.notification.repository.NotificationHistoryRepository;
 import domain.notification.repository.NotificationSubscriptionRepository;
 import domain.user.entity.User;
@@ -43,6 +44,8 @@ import static org.mockito.Mockito.verify;
  * 이 경우에도 결국 알림이 발송되어야 한다.
  */
 @SpringBootTest(classes = TestApplication.class, properties = {
+        // 테스트 클래스마다 독립된 DB (다른 컨텍스트의 relay 가 Outbox 를 집어가지 않도록)
+        "spring.datasource.url=jdbc:h2:mem:recovery-${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1",
         "telegram.bot.token=test-token",
         "movie.check.cron=-",
         "notification.outbox.relay-delay-ms=200"
@@ -64,11 +67,13 @@ class NotificationRecoveryTest {
     @Autowired private ScheduleRepository scheduleRepository;
     @Autowired private NotificationSubscriptionRepository subscriptionRepository;
     @Autowired private NotificationHistoryRepository historyRepository;
+    @Autowired private NotificationOutboxRepository outboxRepository;
 
     private static final LocalDate TARGET_DATE = LocalDate.of(2026, 12, 24);
 
     @AfterEach
     void cleanUp() {
+        outboxRepository.deleteAllInBatch();
         historyRepository.deleteAllInBatch();
         subscriptionRepository.deleteAllInBatch();
         scheduleRepository.deleteAllInBatch();

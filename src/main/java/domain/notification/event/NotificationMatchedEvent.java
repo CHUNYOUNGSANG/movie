@@ -1,16 +1,9 @@
 package domain.notification.event;
 
-import domain.movie.dto.ScreeningResult;
-
-import java.util.List;
-
 /**
- * 구독 조건에 맞는 상영이 발견되어 발송 대상이 된 시점에 발행되는 이벤트.
- * 트랜잭션 커밋 이후에만 발송되도록 NotificationSendListener 가 받는다.
+ * 구독 매칭으로 Outbox 에 발송 대상이 기록된 시점에 발행되는 이벤트.
+ * 커밋 이후 NotificationSendListener 가 받아 즉시 발송을 시도한다.
+ * (리스너가 실행되지 못해도 OutboxRelayScheduler 가 나중에 발송한다)
  */
-public record NotificationMatchedEvent(
-        Long subscriptionId,
-        String chatId,
-        List<ScreeningResult> results
-) {
+public record NotificationMatchedEvent(Long outboxId) {
 }

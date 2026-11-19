@@ -4,7 +4,9 @@ import domain.movie.dto.ScreeningResult;
 import domain.movie.entity.Movie;
 import domain.movie.entity.Theater;
 import domain.notification.entity.NotificationSubscription;
-import domain.notification.repository.NotificationHistoryRepository;
+import domain.notification.outbox.NotificationOutbox;
+import domain.notification.outbox.NotificationOutboxService;
+import domain.telegram.service.MessageSender;
 import domain.notification.repository.NotificationSubscriptionRepository;
 import domain.notification.event.NotificationMatchedEvent;
 import domain.user.entity.User;
@@ -20,9 +22,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -32,14 +34,15 @@ import static org.mockito.BDDMockito.then;
 class NotificationStateServiceTest {
 
     @Mock private NotificationSubscriptionRepository subscriptionRepository;
-    @Mock private NotificationHistoryRepository historyRepository;
+    @Mock private NotificationOutboxService outboxService;
+    @Mock private MessageSender messageSender;
     @Mock private ApplicationEventPublisher eventPublisher;
 
     private NotificationStateService service;
 
     @BeforeEach
     void setUp() {
-        service = new NotificationStateService(subscriptionRepository, historyRepository, eventPublisher);
+        service = new NotificationStateService(subscriptionRepository, outboxService, messageSender, eventPublisher);
     }
 
     @Nested
@@ -47,17 +50,21 @@ class NotificationStateServiceTest {
     class MarkMatched {
 
         @Test
-        @DisplayName("매칭되는 상영이 있으면 triggered=true 로 바꾸고 발송 이벤트를 발행한다")
+        @DisplayName("매칭되는 상영이 있으면 triggered=true 로 바꾸고 Outbox 에 기록하고 발송 이벤트를 발행한다")
         void notifiesOnMatch() {
             NotificationSubscription sub = subscription(1L, "123", null);
             given(subscriptionRepository.findAllBySubscriptionIdIn(List.of(1L))).willReturn(List.of(sub));
 
+            given(messageSender.formatAlerts(any())).willReturn("알림 본문");
+            given(outboxService.enqueue(sub, "알림 본문"))
+                    .willReturn(NotificationOutbox.builder().outboxId(10L).build());
+
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
             assertThat(sub.isTriggered()).isTrue();
+            then(outboxService).should().enqueue(sub, "알림 본문");
             then(eventPublisher).should().publishEvent(
-                    argThat((Object e) -> e instanceof NotificationMatchedEvent ev
-                            && ev.subscriptionId().equals(1L) && ev.chatId().equals("123")));
+                    argThat((Object e) -> e instanceof NotificationMatchedEvent ev && ev.outboxId().equals(10L)));
         }
 
         @Test
@@ -70,6 +77,7 @@ class NotificationStateServiceTest {
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
             assertThat(sub.isTriggered()).isFalse();
+            then(outboxService).shouldHaveNoInteractions();
             then(eventPublisher).shouldHaveNoInteractions();
         }
 
@@ -83,37 +91,6 @@ class NotificationStateServiceTest {
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
             then(eventPublisher).shouldHaveNoInteractions();
-        }
-    }
-
-    @Nested
-    @DisplayName("recordSuccess() / recordFailure()")
-    class Record {
-
-        @Test
-        @DisplayName("발송 성공 시 SUCCESS 이력을 남긴다")
-        void recordsSuccess() {
-            NotificationSubscription sub = subscription(1L, "123", null);
-            sub.setTriggered(true);
-            given(subscriptionRepository.findById(1L)).willReturn(Optional.of(sub));
-
-            service.recordSuccess(1L);
-
-            assertThat(sub.isTriggered()).isTrue();
-            then(historyRepository).should().save(argThat(h -> "SUCCESS".equals(h.getStatus())));
-        }
-
-        @Test
-        @DisplayName("발송 실패 시 FAIL 이력을 남기고 triggered=false 로 되돌린다")
-        void recordsFailureAndResetsTriggered() {
-            NotificationSubscription sub = subscription(1L, "123", null);
-            sub.setTriggered(true);
-            given(subscriptionRepository.findById(1L)).willReturn(Optional.of(sub));
-
-            service.recordFailure(1L);
-
-            assertThat(sub.isTriggered()).isFalse();
-            then(historyRepository).should().save(argThat(h -> "FAIL".equals(h.getStatus())));
         }
     }
 
