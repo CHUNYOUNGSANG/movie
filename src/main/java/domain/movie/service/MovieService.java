@@ -17,13 +17,11 @@ public interface MovieService {
 
     Theater findOrCreateTheater(String brand, String branchName);
 
-    // 크롤링 결과(siteNm 포함)로부터 Theater를 찾거나 생성. siteNo는 결과의 bookingUrl에서 파싱
-    Theater findOrCreateTheaterFromResult(ScreeningResult result);
-
     ScreenType findOrCreateScreenType(String typeName);
 
-    void saveOrUpdateSchedule(Movie movie, Theater theater, ScreenType screenType, ScreeningResult result);
-
-    // 크롤링 결과 전체를 하나의 트랜잭션으로 Schedule 에 반영
+    /**
+     * 크롤링 결과 전체를 하나의 트랜잭션으로 Schedule 에 반영 (없으면 INSERT, 있으면 예매 오픈 여부 갱신).
+     * 결과 건수와 무관하게 일정한 수의 쿼리로 처리한다.
+     */
     void saveScreenings(List<ScreeningResult> results);
 }
