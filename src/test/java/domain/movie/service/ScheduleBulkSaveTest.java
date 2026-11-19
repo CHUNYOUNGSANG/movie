@@ -4,6 +4,7 @@ import domain.TestApplication;
 import domain.movie.crawler.MovieCrawler;
 import domain.movie.dto.ScreeningResult;
 import domain.movie.entity.Schedule;
+import domain.movie.entity.Theater;
 import domain.movie.repository.MovieRepository;
 import domain.movie.repository.ScheduleRepository;
 import domain.movie.repository.ScreenTypeRepository;
@@ -89,6 +90,35 @@ class ScheduleBulkSaveTest {
         assertThat(schedules).hasSize(RESULT_SIZE);
         assertThat(schedules).allMatch(Schedule::isOpened);
         assertThat(queries).as("결과 %d건 갱신에 실행된 쿼리 수", RESULT_SIZE).isLessThanOrEqualTo(MAX_QUERIES);
+    }
+
+    @Test
+    @DisplayName("상영관명에서 지점명을, bookingUrl 에서 siteNo 를 파싱해 극장을 만든다")
+    void createsTheaterFromResult() {
+        movieService.saveScreenings(List.of(screening("CGV 영등포타임스퀘어 SCREENX관", "https://cgv.co.kr/ticket?siteNo=0059&x=1")));
+
+        Theater theater = theaterRepository.findByBrandAndBranchName("CGV", "영등포타임스퀘어").orElseThrow();
+        assertThat(theater.getTheaterId()).isEqualTo("CGV|영등포타임스퀘어");
+        assertThat(theater.getSiteNo()).isEqualTo("0059");
+        assertThat(screenTypeRepository.findByTypeName("ScreenX")).isPresent();
+    }
+
+    @Test
+    @DisplayName("이미 있는 극장의 siteNo 가 비어 있으면 채우고, 있으면 덮어쓰지 않는다")
+    void fillsSiteNoOnlyWhenEmpty() {
+        theaterRepository.save(Theater.builder().theaterId("CGV|강남").brand("CGV").branchName("강남").build());
+        theaterRepository.save(Theater.builder().theaterId("CGV|홍대").brand("CGV").branchName("홍대").siteNo("0191").build());
+
+        movieService.saveScreenings(List.of(
+                screening("CGV 강남 1관", "https://cgv.co.kr/ticket?siteNo=0056"),
+                screening("CGV 홍대 1관", "https://cgv.co.kr/ticket?siteNo=9999")));
+
+        assertThat(theaterRepository.findById("CGV|강남").orElseThrow().getSiteNo()).isEqualTo("0056");
+        assertThat(theaterRepository.findById("CGV|홍대").orElseThrow().getSiteNo()).isEqualTo("0191");
+    }
+
+    private ScreeningResult screening(String theater, String bookingUrl) {
+        return new ScreeningResult("CGV", theater, "위키드", DATE, LocalTime.of(19, 0), 100, true, bookingUrl);
     }
 
     private List<ScreeningResult> screenings(boolean bookingOpen) {
