@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 같은 브랜치에 새 커밋이 오면 이전 실행 취소
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # 실제 토큰은 쓰지 않는다. YOUR_ 로 시작하면 텔레그램 폴링을 건너뛴다.
+      TELEGRAM_BOT_TOKEN: YOUR_CI_DUMMY
+      # 테스트는 크롤러를 mock 으로 대체하므로 Chromium 다운로드(약 150MB)를 건너뛴다.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4   # Gradle 의존성/빌드 캐시
+
+      # 통합 테스트는 Testcontainers 로 MySQL 8.4 컨테이너를 띄운다 (러너에 Docker 기본 제공)
+      - name: Test
+        run: ./gradlew test
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: build/reports/tests/test
+          retention-days: 7
