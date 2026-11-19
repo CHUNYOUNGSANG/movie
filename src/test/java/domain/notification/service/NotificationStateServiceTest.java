@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("NotificationStateService")
@@ -55,13 +56,14 @@ class NotificationStateServiceTest {
             NotificationSubscription sub = subscription(1L, "123", null);
             given(subscriptionRepository.findAllBySubscriptionIdIn(List.of(1L))).willReturn(List.of(sub));
 
+            given(subscriptionRepository.claimTriggered(1L)).willReturn(1);
             given(messageSender.formatAlerts(any())).willReturn("알림 본문");
             given(outboxService.enqueue(sub, "알림 본문"))
                     .willReturn(NotificationOutbox.builder().outboxId(10L).build());
 
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
-            assertThat(sub.isTriggered()).isTrue();
+            then(subscriptionRepository).should().claimTriggered(1L);
             then(outboxService).should().enqueue(sub, "알림 본문");
             then(eventPublisher).should().publishEvent(
                     argThat((Object e) -> e instanceof NotificationMatchedEvent ev && ev.outboxId().equals(10L)));
@@ -76,7 +78,7 @@ class NotificationStateServiceTest {
 
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
-            assertThat(sub.isTriggered()).isFalse();
+            then(subscriptionRepository).should(never()).claimTriggered(any());
             then(outboxService).shouldHaveNoInteractions();
             then(eventPublisher).shouldHaveNoInteractions();
         }
@@ -90,6 +92,19 @@ class NotificationStateServiceTest {
 
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
+            then(eventPublisher).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("선점(조건부 UPDATE)에 실패하면 다른 서버가 처리한 것이므로 Outbox 를 만들지 않는다")
+        void skipsWhenClaimFails() {
+            NotificationSubscription sub = subscription(1L, "123", null);
+            given(subscriptionRepository.findAllBySubscriptionIdIn(List.of(1L))).willReturn(List.of(sub));
+            given(subscriptionRepository.claimTriggered(1L)).willReturn(0);
+
+            service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
+
+            then(outboxService).shouldHaveNoInteractions();
             then(eventPublisher).shouldHaveNoInteractions();
         }
     }

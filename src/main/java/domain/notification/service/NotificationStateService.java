@@ -41,7 +41,8 @@ public class NotificationStateService {
 
     /**
      * 크롤링 결과와 매칭되는 구독을 발송 처리한다.
-     * 트랜잭션 안에서 구독을 다시 조회하므로, 그 사이 다른 주기에서 이미 처리된 구독은 건너뛴다.
+     * 엔티티의 triggered 값(읽은 시점의 스냅샷)이 아니라 조건부 UPDATE 결과로 선점 여부를 판단한다.
+     * → 다른 서버가 같은 구독을 동시에 처리해도 한 곳에서만 Outbox 가 생성된다.
      */
     public void markMatched(List<Long> subscriptionIds, List<ScreeningResult> results) {
         if (results.isEmpty()) return;
@@ -52,7 +53,9 @@ public class NotificationStateService {
             List<ScreeningResult> matched = results.stream().filter(sub::matches).toList();
             if (matched.isEmpty()) continue;
 
-            sub.setTriggered(true);
+            // 선점 실패 = 다른 서버(또는 다른 주기)가 이미 처리함
+            if (subscriptionRepository.claimTriggered(sub.getSubscriptionId()) == 0) continue;
+
             // 구독 상태 변경과 "보낼 메시지" 기록을 같은 트랜잭션으로 커밋 (Transactional Outbox)
             NotificationOutbox outbox = outboxService.enqueue(sub, messageSender.formatAlerts(matched));
             // 커밋 이후 즉시 발송 시도 (실패/누락 시 relay 가 재시도)
