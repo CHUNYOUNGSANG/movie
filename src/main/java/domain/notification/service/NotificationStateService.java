@@ -2,12 +2,12 @@ package domain.notification.service;
 
 import domain.movie.dto.ScreeningResult;
 import domain.notification.entity.NotificationHistory;
+import domain.notification.event.NotificationMatchedEvent;
 import domain.notification.entity.NotificationSubscription;
 import domain.notification.repository.NotificationHistoryRepository;
 import domain.notification.repository.NotificationSubscriptionRepository;
-import domain.telegram.service.MessageSender;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,7 +17,6 @@ import java.util.List;
  * 알림 구독의 상태 변경만 담당하는 짧은 트랜잭션 모음.
  * 크롤링 같은 외부 I/O 는 이 클래스 밖(트랜잭션 밖)에서 수행한다.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -25,7 +24,7 @@ public class NotificationStateService {
 
     private final NotificationSubscriptionRepository subscriptionRepository;
     private final NotificationHistoryRepository historyRepository;
-    private final MessageSender messageSender;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 미발송 구독 조회.
@@ -53,9 +52,9 @@ public class NotificationStateService {
 
             sub.setTriggered(true);
             historyRepository.save(NotificationHistory.builder().subscription(sub).status("SUCCESS").build());
-            messageSender.sendAlerts(sub.getUser().getChatId(), matched);
-            log.info("알림 발송: chatId={}, movie={}, {}개 시간대",
-                    sub.getUser().getChatId(), matched.get(0).movieTitle(), matched.size());
+            // 발송은 커밋 이후 NotificationSendListener 에서 수행
+            eventPublisher.publishEvent(
+                    new NotificationMatchedEvent(sub.getSubscriptionId(), sub.getUser().getChatId(), matched));
         }
     }
 }
