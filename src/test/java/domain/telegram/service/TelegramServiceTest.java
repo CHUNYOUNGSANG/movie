@@ -81,4 +81,29 @@ class TelegramServiceTest {
 
         telegramService.sendMessage("111", "안내");
     }
+
+    @Test
+    @DisplayName("deliver() 는 4xx(봇 차단 등)를 재시도 불가로, 5xx/429 를 재시도 가능으로 구분한다")
+    void deliver_classifiesRetryable() {
+        given(restTemplate.postForObject(anyString(), any(Map.class), eq(Map.class)))
+                .willThrow(org.springframework.web.client.HttpClientErrorException.create(
+                        org.springframework.http.HttpStatus.FORBIDDEN, "Forbidden", null, null, null))
+                .willThrow(org.springframework.web.client.HttpClientErrorException.create(
+                        org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", null, null, null))
+                .willThrow(org.springframework.web.client.HttpServerErrorException.create(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY, "Bad Gateway", null, null, null));
+
+        org.assertj.core.api.Assertions.assertThat(deliverError()).extracting(MessageSendException::isRetryable).isEqualTo(false);
+        org.assertj.core.api.Assertions.assertThat(deliverError()).extracting(MessageSendException::isRetryable).isEqualTo(true);
+        org.assertj.core.api.Assertions.assertThat(deliverError()).extracting(MessageSendException::isRetryable).isEqualTo(true);
+    }
+
+    private MessageSendException deliverError() {
+        try {
+            telegramService.deliver("111", "알림");
+        } catch (MessageSendException e) {
+            return e;
+        }
+        throw new AssertionError("MessageSendException 이 발생해야 함");
+    }
 }
