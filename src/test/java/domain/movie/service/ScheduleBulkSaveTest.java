@@ -14,6 +14,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import support.MySqlTestContainer;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.RestTemplate;
@@ -31,13 +34,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 실제 JDBC 실행(DB 왕복) 횟수를 세어 검증한다.
  */
 @SpringBootTest(classes = TestApplication.class, properties = {
-        "spring.datasource.url=jdbc:h2:mem:bulk-${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1",
         "telegram.bot.token=test-token",
         "movie.check.cron=-"
 })
 @Import(QueryCounter.Config.class)
 @DisplayName("스케줄 저장 벌크 처리 재현")
 class ScheduleBulkSaveTest {
+
+    @DynamicPropertySource
+    static void mysql(DynamicPropertyRegistry registry) {
+        MySqlTestContainer.registerFreshDatabase(registry);   // 테스트 클래스마다 독립된 DB
+    }
 
     /** 극장 5곳 × 상영관 2종 × 시간대 10개 = 100건 */
     private static final int RESULT_SIZE = 100;
