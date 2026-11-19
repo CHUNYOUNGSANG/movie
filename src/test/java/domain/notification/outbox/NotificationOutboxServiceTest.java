@@ -82,6 +82,22 @@ class NotificationOutboxServiceTest {
     }
 
     @Test
+    @DisplayName("속도 제한(429)이면 시도 횟수를 쓰지 않고 retry_after 뒤로 미룬다 (최대 횟수 직전이어도 DEAD 아님)")
+    void rateLimitedDoesNotConsumeAttempt() {
+        outbox.setAttemptCount(2);   // 일반 실패였다면 이번에 DEAD
+        LocalDateTime before = LocalDateTime.now();
+
+        service.markFailed(1L, new MessageSendException("429", null, true, Duration.ofSeconds(5)));
+
+        assertThat(outbox.getStatus()).isEqualTo(OutboxStatus.PENDING);
+        assertThat(outbox.getAttemptCount()).isEqualTo(2);
+        assertThat(outbox.getNextAttemptAt())
+                .isAfterOrEqualTo(before.plusSeconds(5))
+                .isBefore(before.plusSeconds(30));   // 지수 백오프(30초~)가 아니라 retry_after 기준
+        then(historyRepository).should(never()).save(any());
+    }
+
+    @Test
     @DisplayName("백오프는 base × 2^(n-1) 로 늘어나고 1시간을 넘지 않는다")
     void backoffGrowsExponentiallyWithCap() {
         assertThat(service.backoff(1)).isEqualTo(Duration.ofSeconds(30));
