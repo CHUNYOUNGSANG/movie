@@ -98,6 +98,20 @@ class TelegramServiceTest {
         org.assertj.core.api.Assertions.assertThat(deliverError()).extracting(MessageSendException::isRetryable).isEqualTo(true);
     }
 
+    @Test
+    @DisplayName("deliver() 실패 예외에는 봇 토큰이 포함되지 않는다 (DB last_error / 로그 노출 방지)")
+    void deliver_doesNotLeakBotToken() {
+        // RestTemplate 의 I/O 예외 메시지에는 요청 URL(토큰 포함)이 그대로 들어간다
+        given(restTemplate.postForObject(anyString(), any(Map.class), eq(Map.class)))
+                .willThrow(new org.springframework.web.client.ResourceAccessException(
+                        "I/O error on POST request for \"https://api.telegram.org/botreal-token-12345/sendMessage\": timeout"));
+
+        MessageSendException e = deliverError();
+
+        org.assertj.core.api.Assertions.assertThat(e.getMessage()).doesNotContain("real-token-12345");
+        org.assertj.core.api.Assertions.assertThat(e.getCause()).isNull();
+    }
+
     private MessageSendException deliverError() {
         try {
             telegramService.deliver("111", "알림");

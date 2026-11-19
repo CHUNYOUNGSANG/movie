@@ -47,7 +47,7 @@ public class TelegramService implements MessageSender {
             restTemplate.postForObject(url, Map.of("commands", COMMANDS), Map.class);
             log.info("텔레그램 자동완성 메뉴 등록 완료");
         } catch (Exception e) {
-            log.error("텔레그램 자동완성 메뉴 등록 실패: {}", e.getMessage());
+            log.error("텔레그램 자동완성 메뉴 등록 실패: {}", redact(e));
         }
     }
 
@@ -56,7 +56,7 @@ public class TelegramService implements MessageSender {
         try {
             post(chatId, text);
         } catch (Exception e) {
-            log.error("텔레그램 전송 실패 chatId={}: {}", chatId, e.getMessage());
+            log.error("텔레그램 전송 실패 chatId={}: {}", chatId, redact(e));
         }
     }
 
@@ -65,8 +65,16 @@ public class TelegramService implements MessageSender {
         try {
             post(chatId, text);
         } catch (Exception e) {
-            throw new MessageSendException("알림 발송 실패 chatId=" + chatId + ": " + e.getMessage(), e, isRetryable(e));
+            // 원본 예외(cause)는 붙이지 않는다: RestTemplate 예외 메시지에 토큰이 포함된 URL 이 들어 있어
+            // 스택트레이스 로깅이나 DB(last_error) 저장 시 토큰이 노출될 수 있다
+            throw new MessageSendException("알림 발송 실패 chatId=" + chatId + ": " + redact(e), null, isRetryable(e));
         }
+    }
+
+    /** 예외 메시지에서 봇 토큰을 가린다 (요청 URL 이 메시지에 포함되는 경우가 있음) */
+    private String redact(Exception e) {
+        String message = e.getClass().getSimpleName() + ": " + e.getMessage();
+        return botToken == null || botToken.isBlank() ? message : message.replace(botToken, "<redacted>");
     }
 
     /**
