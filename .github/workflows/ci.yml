@@ -24,14 +24,14 @@ jobs:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: gradle/actions/setup-gradle@v4   # Gradle 의존성/빌드 캐시
+      - uses: gradle/actions/setup-gradle@v5   # Gradle 의존성/빌드 캐시
 
       # 통합 테스트는 Testcontainers 로 MySQL 8.4 컨테이너를 띄운다 (러너에 Docker 기본 제공)
       - name: Test
