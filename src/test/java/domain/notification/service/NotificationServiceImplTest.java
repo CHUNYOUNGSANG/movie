@@ -38,6 +38,7 @@ class NotificationServiceImplTest {
     @Mock private MovieService movieService;
     @Mock private UserService userService;
     @Mock private NotificationStateService notificationStateService;
+    @Mock private domain.notification.outbox.NotificationOutboxService outboxService;
     @Mock private MovieCrawler cgvCrawler;
 
     private NotificationServiceImpl service;
@@ -46,7 +47,7 @@ class NotificationServiceImplTest {
     void setUp() {
         service = new NotificationServiceImpl(
                 notificationSubscriptionRepository,
-                movieService, userService, notificationStateService,
+                movieService, userService, notificationStateService, outboxService,
                 List.of(cgvCrawler)
         );
     }
