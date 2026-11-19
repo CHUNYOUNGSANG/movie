@@ -3,6 +3,7 @@ package domain.notification.outbox;
 import domain.notification.entity.NotificationHistory;
 import domain.notification.entity.NotificationSubscription;
 import domain.notification.repository.NotificationHistoryRepository;
+import domain.telegram.service.MessageSendException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
@@ -30,8 +31,14 @@ public class NotificationOutboxService {
     private final NotificationOutboxRepository outboxRepository;
     private final NotificationHistoryRepository historyRepository;
 
+    /** 최대 재시도 간격 (지수 백오프 상한) */
+    private static final Duration MAX_DELAY = Duration.ofHours(1);
+
     @Value("${notification.outbox.base-delay-ms:30000}")
     private long baseDelayMs;
+
+    @Value("${notification.outbox.max-attempts:5}")
+    private int maxAttempts;
 
     /** 매칭 트랜잭션 안에서 호출된다 (구독 상태 변경과 함께 커밋/롤백). */
     public NotificationOutbox enqueue(NotificationSubscription sub, String message) {
@@ -61,13 +68,34 @@ public class NotificationOutboxService {
                 .subscription(outbox.getSubscription()).status("SUCCESS").build());
     }
 
+    /**
+     * 발송 실패 처리.
+     * - 영구 실패(재시도 불가)이거나 최대 시도 횟수에 도달하면 DEAD + FAIL 이력
+     * - 그 외에는 지수 백오프(base × 2^(n-1), 최대 1시간) 후 다시 PENDING
+     */
     public void markFailed(Long outboxId, Exception cause) {
         NotificationOutbox outbox = outboxRepository.findById(outboxId).orElseThrow();
-        outbox.setAttemptCount(outbox.getAttemptCount() + 1);
+        int attempts = outbox.getAttemptCount() + 1;
+        outbox.setAttemptCount(attempts);
         outbox.setLastError(truncate(cause.getMessage()));
         outbox.setLockedAt(null);
+
+        boolean retryable = !(cause instanceof MessageSendException mse) || mse.isRetryable();
+        if (!retryable || attempts >= maxAttempts) {
+            outbox.setStatus(OutboxStatus.DEAD);
+            historyRepository.save(NotificationHistory.builder()
+                    .subscription(outbox.getSubscription()).status("FAIL").build());
+            return;
+        }
         outbox.setStatus(OutboxStatus.PENDING);
-        outbox.setNextAttemptAt(LocalDateTime.now().plus(Duration.ofMillis(baseDelayMs)));
+        outbox.setNextAttemptAt(LocalDateTime.now().plus(backoff(attempts)));
+    }
+
+    /** attempts 회 실패 후 다음 시도까지의 대기 시간 */
+    Duration backoff(int attempts) {
+        long multiplier = 1L << Math.min(attempts - 1, 20);   // 오버플로 방지
+        Duration delay = Duration.ofMillis(baseDelayMs).multipliedBy(multiplier);
+        return delay.compareTo(MAX_DELAY) > 0 ? MAX_DELAY : delay;
     }
 
     @Transactional(readOnly = true)

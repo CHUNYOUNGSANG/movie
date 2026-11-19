@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
@@ -64,8 +65,20 @@ public class TelegramService implements MessageSender {
         try {
             post(chatId, text);
         } catch (Exception e) {
-            throw new MessageSendException("알림 발송 실패 chatId=" + chatId + ": " + e.getMessage(), e);
+            throw new MessageSendException("알림 발송 실패 chatId=" + chatId + ": " + e.getMessage(), e, isRetryable(e));
         }
+    }
+
+    /**
+     * 4xx 는 요청 자체가 잘못된 것이므로 재시도해도 성공하지 않는다 (봇 차단 403, chat 없음 400 등).
+     * 단 429(Too Many Requests)는 잠시 후 성공할 수 있으므로 재시도한다.
+     * 5xx, 타임아웃 등 네트워크 오류는 일시 장애로 보고 재시도한다.
+     */
+    private static boolean isRetryable(Exception e) {
+        if (e instanceof HttpClientErrorException clientError) {
+            return clientError.getStatusCode().value() == 429;
+        }
+        return true;
     }
 
     private void post(String chatId, String text) {
