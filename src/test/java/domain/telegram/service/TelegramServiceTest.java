@@ -25,6 +25,7 @@ import static org.mockito.BDDMockito.then;
 class TelegramServiceTest {
 
     @Mock private RestTemplate restTemplate;
+    @Mock private TelegramRateLimiter rateLimiter;
     @InjectMocks private TelegramService telegramService;
 
     @BeforeEach
@@ -110,6 +111,43 @@ class TelegramServiceTest {
 
         org.assertj.core.api.Assertions.assertThat(e.getMessage()).doesNotContain("real-token-12345");
         org.assertj.core.api.Assertions.assertThat(e.getCause()).isNull();
+    }
+
+    @Test
+    @DisplayName("deliver() 는 429 응답의 retry_after 를 읽어 예외에 담고, 그 시간 동안 전체 발송을 멈춘다")
+    void deliver_readsRetryAfterAndPauses() {
+        given(restTemplate.postForObject(anyString(), any(Map.class), eq(Map.class)))
+                .willThrow(org.springframework.web.client.HttpClientErrorException.create(
+                        org.springframework.http.HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests", null,
+                        "{\"ok\":false,\"error_code\":429,\"parameters\":{\"retry_after\":7}}".getBytes(),
+                        java.nio.charset.StandardCharsets.UTF_8));
+
+        MessageSendException e = deliverError();
+
+        org.assertj.core.api.Assertions.assertThat(e.isRateLimited()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(e.getRetryAfter()).isEqualTo(java.time.Duration.ofSeconds(7));
+        then(rateLimiter).should().pause(java.time.Duration.ofSeconds(7));
+    }
+
+    @Test
+    @DisplayName("deliver() 는 429 가 아닌 실패에는 retry_after 를 담지 않는다")
+    void deliver_noRetryAfterForOtherErrors() {
+        given(restTemplate.postForObject(anyString(), any(Map.class), eq(Map.class)))
+                .willThrow(org.springframework.web.client.HttpServerErrorException.create(
+                        org.springframework.http.HttpStatus.BAD_GATEWAY, "Bad Gateway", null, null, null));
+
+        org.assertj.core.api.Assertions.assertThat(deliverError().isRateLimited()).isFalse();
+        then(rateLimiter).should(org.mockito.Mockito.never()).pause(any());
+    }
+
+    @Test
+    @DisplayName("텔레그램 API 호출 전에 속도 제한기를 거친다")
+    void post_acquiresRateLimiterFirst() throws InterruptedException {
+        telegramService.sendMessage("111", "안내");
+
+        org.mockito.InOrder order = org.mockito.Mockito.inOrder(rateLimiter, restTemplate);
+        order.verify(rateLimiter).acquire();
+        order.verify(restTemplate).postForObject(anyString(), any(Map.class), eq(Map.class));
     }
 
     private MessageSendException deliverError() {
