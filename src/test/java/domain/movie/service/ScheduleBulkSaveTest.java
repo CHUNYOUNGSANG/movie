@@ -74,17 +74,28 @@ class ScheduleBulkSaveTest {
     @Test
     @DisplayName("[MySQL 경고] 스케줄 upsert 가 deprecated 문법 경고(1287 VALUES())를 남기지 않아야 한다")
     void upsertRaisesNoWarnings() {
+        // performance_schema 집계는 누적값이라 같은 DB를 쓰는 다른 테스트 몫을 빼기 위해 전후 차이로 측정
+        long[] before = scheduleInsertStats();
         movieService.saveScreenings(screenings(false));   // 신규 INSERT
         movieService.saveScreenings(screenings(true));    // 중복 키 → UPDATE 경로
+        long[] after = scheduleInsertStats();
 
-        // 서버가 집계한 문장별 경고 수 (performance_schema, 이 테스트 클래스의 DB 로 한정)
-        Long warnings = jdbcTemplate.queryForObject("""
-                SELECT COALESCE(SUM(SUM_WARNINGS), 0)
+        long statements = after[0] - before[0];
+        long warnings = after[1] - before[1];
+        System.out.printf("[MySQL 경고] 스케줄 upsert 경고 수: %d, 서버가 받은 INSERT 문장 수: %d (100건 × 2회 저장)%n",
+                warnings, statements);
+        assertThat(warnings).as("스케줄 upsert 실행 시 MySQL 경고 수").isZero();
+        // rewriteBatchedStatements 가 별칭 문법에서도 배치를 다중 행 INSERT 1문장으로 바꾸는지 확인
+        assertThat(statements).as("저장 1회당 다중 행 INSERT 1문장").isEqualTo(2);
+    }
+
+    /** 이 테스트 클래스 DB 에서 서버가 실행한 schedules INSERT 의 {문장 수, 경고 수} (performance_schema) */
+    private long[] scheduleInsertStats() {
+        return jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(COUNT_STAR), 0), COALESCE(SUM(SUM_WARNINGS), 0)
                 FROM performance_schema.events_statements_summary_by_digest
                 WHERE SCHEMA_NAME = DATABASE() AND DIGEST_TEXT LIKE 'INSERT INTO `schedules`%'
-                """, Long.class);
-        System.out.printf("[MySQL 경고] 스케줄 upsert 경고 수: %d%n", warnings);
-        assertThat(warnings).as("스케줄 upsert 실행 시 MySQL 경고 수").isZero();
+                """, (rs, n) -> new long[]{rs.getLong(1), rs.getLong(2)});
     }
 
     @Test
