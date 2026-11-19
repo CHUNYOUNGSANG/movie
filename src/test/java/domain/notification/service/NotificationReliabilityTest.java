@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -67,6 +68,8 @@ class NotificationReliabilityTest {
     @MockitoBean private MovieCrawler crawler;
 
     @Autowired private NotificationService notificationService;
+    @Autowired private NotificationStateService notificationStateService;
+    @Autowired private TransactionTemplate transactionTemplate;
     @Autowired private DataSource dataSource;
 
     @Autowired private UserRepository userRepository;
@@ -144,6 +147,23 @@ class NotificationReliabilityTest {
         // 비동기 발송이 모두 끝날 때까지 기다린 뒤 chatId 별 발송 횟수를 확인
         verify(restTemplate, after(2000).times(1)).postForObject(sendMessageUrl(), chatIdIs("2001"), eq(Map.class));
         verify(restTemplate, times(1)).postForObject(sendMessageUrl(), chatIdIs("2002"), eq(Map.class));
+    }
+
+    @Test
+    @DisplayName("[커밋 전 발송] 매칭 처리 트랜잭션이 롤백되면 알림을 발송하지 않아야 한다")
+    void rolledBackMatchMustNotSendAlert() {
+        NotificationSubscription sub = subscribe("4001", "위키드");
+
+        // markMatched() 이후 같은 트랜잭션에서 예외가 난 상황 (예: 커밋 시점 제약조건 위반)
+        transactionTemplate.executeWithoutResult(status -> {
+            notificationStateService.markMatched(List.of(sub.getSubscriptionId()), List.of(openScreening("위키드")));
+            status.setRollbackOnly();
+        });
+
+        verify(restTemplate, after(1000).never()).postForObject(sendMessageUrl(), any(), eq(Map.class));
+        assertThat(subscriptionRepository.findById(sub.getSubscriptionId()).orElseThrow().isTriggered())
+                .as("롤백되었으므로 다음 주기에 다시 처리되어야 함")
+                .isFalse();
     }
 
     @Test
