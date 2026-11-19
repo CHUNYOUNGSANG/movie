@@ -61,6 +61,10 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
     testCompileOnly 'org.projectlombok:lombok'
     testAnnotationProcessor 'org.projectlombok:lombok'
+    // 통합 테스트를 운영과 같은 MySQL 8.4 컨테이너에서 실행
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    testImplementation 'org.testcontainers:testcontainers-mysql'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
