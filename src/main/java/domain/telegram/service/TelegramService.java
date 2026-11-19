@@ -5,7 +5,6 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -53,6 +52,24 @@ public class TelegramService implements MessageSender {
 
     @Override
     public void sendMessage(String chatId, String text) {
+        try {
+            post(chatId, text);
+        } catch (Exception e) {
+            log.error("텔레그램 전송 실패 chatId={}: {}", chatId, e.getMessage());
+        }
+    }
+
+    @Override
+    public void sendAlerts(String chatId, List<ScreeningResult> results) {
+        if (results.isEmpty()) return;
+        try {
+            post(chatId, formatAll(results));
+        } catch (Exception e) {
+            throw new MessageSendException("알림 발송 실패 chatId=" + chatId, e);
+        }
+    }
+
+    private void post(String chatId, String text) {
         if (botToken.startsWith("YOUR_")) {
             log.warn("[텔레그램 미설정] chatId={}, 메시지:\n{}", chatId, text);
             return;
@@ -64,19 +81,8 @@ public class TelegramService implements MessageSender {
         body.put("text", text);
         body.put("parse_mode", "HTML");
 
-        try {
-            restTemplate.postForObject(url, body, Map.class);
-            log.info("텔레그램 전송 완료 → chatId={}", chatId);
-        } catch (Exception e) {
-            log.error("텔레그램 전송 실패 chatId={}: {}", chatId, e.getMessage());
-        }
-    }
-
-    @Async("notificationExecutor")
-    @Override
-    public void sendAlerts(String chatId, List<ScreeningResult> results) {
-        if (results.isEmpty()) return;
-        sendMessage(chatId, formatAll(results));
+        restTemplate.postForObject(url, body, Map.class);
+        log.info("텔레그램 전송 완료 → chatId={}", chatId);
     }
 
     private String formatAll(List<ScreeningResult> results) {

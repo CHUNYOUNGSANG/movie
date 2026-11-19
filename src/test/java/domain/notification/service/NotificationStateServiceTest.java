@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -82,6 +83,37 @@ class NotificationStateServiceTest {
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
             then(eventPublisher).shouldHaveNoInteractions();
+        }
+    }
+
+    @Nested
+    @DisplayName("recordSuccess() / recordFailure()")
+    class Record {
+
+        @Test
+        @DisplayName("발송 성공 시 SUCCESS 이력을 남긴다")
+        void recordsSuccess() {
+            NotificationSubscription sub = subscription(1L, "123", null);
+            sub.setTriggered(true);
+            given(subscriptionRepository.findById(1L)).willReturn(Optional.of(sub));
+
+            service.recordSuccess(1L);
+
+            assertThat(sub.isTriggered()).isTrue();
+            then(historyRepository).should().save(argThat(h -> "SUCCESS".equals(h.getStatus())));
+        }
+
+        @Test
+        @DisplayName("발송 실패 시 FAIL 이력을 남기고 triggered=false 로 되돌린다")
+        void recordsFailureAndResetsTriggered() {
+            NotificationSubscription sub = subscription(1L, "123", null);
+            sub.setTriggered(true);
+            given(subscriptionRepository.findById(1L)).willReturn(Optional.of(sub));
+
+            service.recordFailure(1L);
+
+            assertThat(sub.isTriggered()).isFalse();
+            then(historyRepository).should().save(argThat(h -> "FAIL".equals(h.getStatus())));
         }
     }
 
