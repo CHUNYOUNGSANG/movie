@@ -5,6 +5,8 @@ import domain.movie.entity.Movie;
 import domain.movie.entity.ScreenType;
 import domain.movie.entity.Theater;
 
+import java.util.List;
+
 /**
  * SRP: 영화/극장/상영관/스케줄의 조회·생성 책임을 이 서비스로 모음.
  * 다른 도메인(Notification 등)은 Movie 관련 Repository를 직접 알지 못하고 이 인터페이스만 의존.
@@ -21,4 +23,7 @@ public interface MovieService {
     ScreenType findOrCreateScreenType(String typeName);
 
     void saveOrUpdateSchedule(Movie movie, Theater theater, ScreenType screenType, ScreeningResult result);
+
+    // 크롤링 결과 전체를 하나의 트랜잭션으로 Schedule 에 반영
+    void saveScreenings(List<ScreeningResult> results);
 }

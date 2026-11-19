@@ -7,16 +7,14 @@ import domain.movie.entity.ScreenType;
 import domain.movie.entity.Theater;
 import domain.movie.service.MovieService;
 import domain.notification.dto.NotificationRegisterRequest;
-import domain.notification.entity.NotificationHistory;
 import domain.notification.entity.NotificationSubscription;
-import domain.notification.repository.NotificationHistoryRepository;
 import domain.notification.repository.NotificationSubscriptionRepository;
-import domain.telegram.service.MessageSender;
 import domain.user.entity.User;
 import domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -31,10 +29,9 @@ import java.util.stream.Collectors;
 public class NotificationServiceImpl implements NotificationService {
 
     private final NotificationSubscriptionRepository notificationSubscriptionRepository;
-    private final NotificationHistoryRepository notificationHistoryRepository;
     private final MovieService movieService;     // SRP: 영화/극장/상영관/스케줄 관리는 Movie 도메인 책임
     private final UserService userService;       // SRP: 사용자 조회/구독 상태 관리는 User 도메인 책임
-    private final MessageSender messageSender;   // DIP: 추상화에 의존 (TelegramService 직접 의존 X)
+    private final NotificationStateService notificationStateService;
     private final List<MovieCrawler> crawlers;   // OCP: 새 크롤러 추가 시 이 코드 수정 없음
 
     @Override
@@ -81,9 +78,15 @@ public class NotificationServiceImpl implements NotificationService {
         notificationSubscriptionRepository.delete(sub);
     }
 
+    /**
+     * 크롤링(외부 I/O, 수 초 소요)은 트랜잭션 밖에서 수행하고,
+     * DB 반영은 MovieService / NotificationStateService 의 짧은 트랜잭션으로 나눈다.
+     * → 크롤링 동안 DB 커넥션을 점유하지 않고, 한 그룹의 실패가 이미 처리된 그룹을 롤백시키지 않는다.
+     */
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void checkAndNotify() {
-        List<NotificationSubscription> pending = notificationSubscriptionRepository.findAllByTriggeredFalse();
+        List<NotificationSubscription> pending = notificationStateService.findPending();
         if (pending.isEmpty()) {
             log.info("대기 중인 알림 신청 없음");
             return;
@@ -100,47 +103,26 @@ public class NotificationServiceImpl implements NotificationService {
         for (List<NotificationSubscription> group : groups.values()) {
             NotificationSubscription sample = group.get(0);
             String siteHint = sample.getTheater() != null ? sample.getTheater().getBranchName() : null;
+            List<Long> subscriptionIds = group.stream().map(NotificationSubscription::getSubscriptionId).toList();
             crawlers.forEach(crawler ->
                     crawlAndMatch(crawler, sample.getMovie().getTitle(),
-                            siteHint, sample.getTargetDate(), group));
+                            siteHint, sample.getTargetDate(), subscriptionIds));
         }
     }
 
     // ── private ───────────────────────────────────────────────
 
     private void crawlAndMatch(MovieCrawler crawler, String movieTitle,
-                               String siteNo, LocalDate targetDate, List<NotificationSubscription> group) {
+                               String siteNo, LocalDate targetDate, List<Long> subscriptionIds) {
+        // 1) 크롤링 — 트랜잭션 없음
         List<ScreeningResult> results = crawler.crawl(movieTitle, siteNo, targetDate);
         log.info("[{}] {} siteNo={} {} → {}건", crawler.getCinemaName(), movieTitle, siteNo, targetDate, results.size());
+        if (results.isEmpty()) return;
 
-        // DB 저장 (스케줄 갱신)
-        for (ScreeningResult result : results) {
-            Movie movie     = movieService.findOrCreateMovie(result.movieTitle());
-            Theater theater = movieService.findOrCreateTheaterFromResult(result);
-            ScreenType st   = movieService.findOrCreateScreenType(ScreenType.extractFrom(result.theater()));
-            movieService.saveOrUpdateSchedule(movie, theater, st, result);
-        }
+        // 2) 스케줄 저장 — 짧은 트랜잭션
+        movieService.saveScreenings(results);
 
-        // 알림: 구독별로 매칭되는 모든 시간대를 모아 한 번에 발송
-        for (NotificationSubscription sub : group) {
-            if (sub.isTriggered()) continue;
-
-            List<ScreeningResult> matched = results.stream()
-                    .filter(sub::matches)
-                    .toList();
-
-            if (!matched.isEmpty()) {
-                notifyAll(sub, matched);
-            }
-        }
-    }
-
-    private void notifyAll(NotificationSubscription sub, List<ScreeningResult> results) {
-        sub.setTriggered(true);
-        notificationHistoryRepository.save(
-                NotificationHistory.builder().subscription(sub).status("SUCCESS").build());
-        messageSender.sendAlerts(sub.getUser().getChatId(), results);
-        log.info("알림 발송: chatId={}, movie={}, {}개 시간대",
-                sub.getUser().getChatId(), results.get(0).movieTitle(), results.size());
+        // 3) 구독 매칭 및 발송 처리 — 짧은 트랜잭션
+        notificationStateService.markMatched(subscriptionIds, results);
     }
 }

@@ -8,9 +8,7 @@ import domain.movie.entity.Theater;
 import domain.movie.service.MovieService;
 import domain.notification.dto.NotificationRegisterRequest;
 import domain.notification.entity.NotificationSubscription;
-import domain.notification.repository.NotificationHistoryRepository;
 import domain.notification.repository.NotificationSubscriptionRepository;
-import domain.telegram.service.MessageSender;
 import domain.user.entity.User;
 import domain.user.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,17 +29,15 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("NotificationServiceImpl")
 class NotificationServiceImplTest {
 
     @Mock private NotificationSubscriptionRepository notificationSubscriptionRepository;
-    @Mock private NotificationHistoryRepository notificationHistoryRepository;
     @Mock private MovieService movieService;
     @Mock private UserService userService;
-    @Mock private MessageSender messageSender;   // 구체 클래스 아닌 인터페이스로 Mock
+    @Mock private NotificationStateService notificationStateService;
     @Mock private MovieCrawler cgvCrawler;
 
     private NotificationServiceImpl service;
@@ -49,8 +45,8 @@ class NotificationServiceImplTest {
     @BeforeEach
     void setUp() {
         service = new NotificationServiceImpl(
-                notificationSubscriptionRepository, notificationHistoryRepository,
-                movieService, userService, messageSender,
+                notificationSubscriptionRepository,
+                movieService, userService, notificationStateService,
                 List.of(cgvCrawler)
         );
     }
@@ -134,7 +130,7 @@ class NotificationServiceImplTest {
         @Test
         @DisplayName("대기 신청 없으면 크롤러를 호출하지 않는다")
         void skipsWhenNoPending() {
-            given(notificationSubscriptionRepository.findAllByTriggeredFalse()).willReturn(List.of());
+            given(notificationStateService.findPending()).willReturn(List.of());
 
             service.checkAndNotify();
 
@@ -142,46 +138,36 @@ class NotificationServiceImplTest {
         }
 
         @Test
-        @DisplayName("매칭 상영 발견 시 MessageSender.sendAlerts() 를 호출하고 triggered=true 로 변경한다")
-        void notifiesOnMatch() {
-            Movie movie = movie("스파이더맨");
+        @DisplayName("크롤링 결과를 스케줄로 저장하고, 그룹의 구독 ID 와 함께 매칭 처리를 위임한다")
+        void savesSchedulesAndDelegatesMatching() {
             NotificationSubscription sub = NotificationSubscription.builder()
-                    .subscriptionId(1L).user(user("123")).movie(movie)
+                    .subscriptionId(1L).user(user("123")).movie(movie("스파이더맨"))
                     .targetDate(LocalDate.of(2026, 9, 4)).build();
+            List<ScreeningResult> results = List.of(screening("스파이더맨"));
 
-            given(notificationSubscriptionRepository.findAllByTriggeredFalse()).willReturn(List.of(sub));
-            given(cgvCrawler.crawl(eq("스파이더맨"), isNull(), any()))
-                    .willReturn(List.of(screening("스파이더맨")));
-            given(movieService.findOrCreateMovie(any())).willReturn(movie);
-            given(movieService.findOrCreateTheaterFromResult(any())).willReturn(theater("CGV", "강남"));
-            given(movieService.findOrCreateScreenType(any())).willReturn(screenType("일반"));
-            given(notificationHistoryRepository.save(any())).willAnswer(i -> i.getArgument(0));
+            given(notificationStateService.findPending()).willReturn(List.of(sub));
+            given(cgvCrawler.crawl(eq("스파이더맨"), isNull(), any())).willReturn(results);
 
             service.checkAndNotify();
 
-            then(messageSender).should(times(1)).sendAlerts(eq("123"), any());
-            assert sub.isTriggered();
+            then(movieService).should().saveScreenings(results);
+            then(notificationStateService).should().markMatched(List.of(1L), results);
         }
 
         @Test
-        @DisplayName("지점 필터 불일치 시 알림을 보내지 않는다")
-        void skipsWhenTheaterNotMatched() {
-            Movie movie = movie("스파이더맨");
+        @DisplayName("크롤링 결과가 없으면 저장/매칭을 하지 않는다")
+        void skipsWhenNoResults() {
             NotificationSubscription sub = NotificationSubscription.builder()
-                    .subscriptionId(1L).user(user("123")).movie(movie)
-                    .theater(theater("CGV", "홍대"))   // 홍대 필터
+                    .subscriptionId(1L).user(user("123")).movie(movie("스파이더맨"))
                     .targetDate(LocalDate.of(2026, 9, 4)).build();
 
-            given(notificationSubscriptionRepository.findAllByTriggeredFalse()).willReturn(List.of(sub));
-            given(cgvCrawler.crawl(eq("스파이더맨"), eq("홍대"), any()))
-                    .willReturn(List.of(screening("스파이더맨"))); // 강남 결과
-            given(movieService.findOrCreateMovie(any())).willReturn(movie);
-            given(movieService.findOrCreateTheaterFromResult(any())).willReturn(theater("CGV", "강남"));
-            given(movieService.findOrCreateScreenType(any())).willReturn(screenType("일반"));
+            given(notificationStateService.findPending()).willReturn(List.of(sub));
+            given(cgvCrawler.crawl(any(), any(), any())).willReturn(List.of());
 
             service.checkAndNotify();
 
-            then(messageSender).shouldHaveNoInteractions();
+            then(movieService).shouldHaveNoInteractions();
+            then(notificationStateService).should(never()).markMatched(any(), any());
         }
     }
 

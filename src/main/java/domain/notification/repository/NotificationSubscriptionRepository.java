@@ -18,4 +18,7 @@ public interface NotificationSubscriptionRepository extends JpaRepository<Notifi
 
     @EntityGraph(attributePaths = {"movie", "theater", "screenType", "user"})
     Optional<NotificationSubscription> findById(Long id);
+
+    @EntityGraph(attributePaths = {"movie", "theater", "screenType", "user"})
+    List<NotificationSubscription> findAllBySubscriptionIdIn(List<Long> subscriptionIds);
 }

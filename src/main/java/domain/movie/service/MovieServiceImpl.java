@@ -13,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -73,6 +75,16 @@ public class MovieServiceImpl implements MovieService {
                                 .movie(movie).theater(theater).screenType(screenType)
                                 .showDate(result.date()).showTime(result.time())
                                 .opened(result.bookingOpen()).build()));
+    }
+
+    @Override
+    public void saveScreenings(List<ScreeningResult> results) {
+        for (ScreeningResult result : results) {
+            Movie movie           = findOrCreateMovie(result.movieTitle());
+            Theater theater       = findOrCreateTheaterFromResult(result);
+            ScreenType screenType = findOrCreateScreenType(ScreenType.extractFrom(result.theater()));
+            saveOrUpdateSchedule(movie, theater, screenType, result);
+        }
     }
 
     private String extractSiteNo(String bookingUrl) {
