@@ -1,9 +1,13 @@
 spring:
   application:
     name: moviebot
+  # 로컬: ./gradlew bootTestRun → Testcontainers 가 MySQL 컨테이너를 띄우고 접속 정보를 자동 주입
+  # 운영: docker-compose 의 SPRING_DATASOURCE_* 환경변수로 덮어씀
+  # 아래 기본값은 docker compose 의 db(3306)에 bootRun 으로 직접 붙을 때 사용 (.env 의 DB_USER / DB_PASSWORD)
   datasource:
-    url: jdbc:h2:mem:moviebotdb;MODE=MySQL;DB_CLOSE_DELAY=-1
-    driver-class-name: org.h2.Driver
+    url: jdbc:mysql://localhost:3306/moviebotdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&rewriteBatchedStatements=true
+    username: ${DB_USER:moviebot}
+    password: ${DB_PASSWORD:}
     hikari:
       maximum-pool-size: 10
       minimum-idle: 3
@@ -19,10 +23,6 @@ spring:
           batch_size: 50      # INSERT/UPDATE 를 묶어서 실행 (IDENTITY PK 엔티티는 제외됨)
         order_inserts: true
         order_updates: true
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
   task:
     scheduling:
       pool:

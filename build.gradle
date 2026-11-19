@@ -34,9 +34,8 @@ dependencies {
     // Web
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 
-    // JPA + H2 (로컬/테스트) + MySQL (운영)
+    // JPA + MySQL (운영 / 로컬·테스트는 Testcontainers 로 같은 MySQL 8.4 사용)
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    runtimeOnly 'com.h2database:h2'
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     // DB 마이그레이션 (ddl-auto 대신 명시적 스키마 버전 관리)
