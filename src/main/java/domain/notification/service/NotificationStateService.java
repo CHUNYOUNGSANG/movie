@@ -51,10 +51,25 @@ public class NotificationStateService {
             if (matched.isEmpty()) continue;
 
             sub.setTriggered(true);
-            historyRepository.save(NotificationHistory.builder().subscription(sub).status("SUCCESS").build());
             // 발송은 커밋 이후 NotificationSendListener 에서 수행
             eventPublisher.publishEvent(
                     new NotificationMatchedEvent(sub.getSubscriptionId(), sub.getUser().getChatId(), matched));
         }
+    }
+
+    /** 발송 성공 기록. */
+    public void recordSuccess(Long subscriptionId) {
+        subscriptionRepository.findById(subscriptionId).ifPresent(sub ->
+                historyRepository.save(NotificationHistory.builder().subscription(sub).status("SUCCESS").build()));
+    }
+
+    /**
+     * 발송 실패 기록. triggered 를 되돌려 다음 주기에 다시 발송 대상이 되게 한다.
+     */
+    public void recordFailure(Long subscriptionId) {
+        subscriptionRepository.findById(subscriptionId).ifPresent(sub -> {
+            sub.setTriggered(false);
+            historyRepository.save(NotificationHistory.builder().subscription(sub).status("FAIL").build());
+        });
     }
 }

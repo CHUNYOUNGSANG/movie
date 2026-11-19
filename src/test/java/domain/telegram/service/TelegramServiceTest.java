@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 @ExtendWith(MockitoExtension.class)
@@ -61,5 +62,28 @@ class TelegramServiceTest {
         telegramService.sendAlerts("111", List.of(result));
 
         then(restTemplate).should().postForObject(anyString(), any(Map.class), eq(Map.class));
+    }
+
+    @Test
+    @DisplayName("sendAlerts() 는 API 호출이 실패하면 MessageSendException 을 던진다")
+    void sendAlerts_throwsOnFailure() {
+        ScreeningResult result = new ScreeningResult(
+                "CGV", "강남", "파묘",
+                LocalDate.of(2026, 9, 10), LocalTime.of(14, 30),
+                50, true, "https://cgv.co.kr");
+        given(restTemplate.postForObject(anyString(), any(Map.class), eq(Map.class)))
+                .willThrow(new org.springframework.web.client.RestClientException("장애"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> telegramService.sendAlerts("111", List.of(result)))
+                .isInstanceOf(MessageSendException.class);
+    }
+
+    @Test
+    @DisplayName("sendMessage() 는 API 호출이 실패해도 예외를 던지지 않는다")
+    void sendMessage_swallowsFailure() {
+        given(restTemplate.postForObject(anyString(), any(Map.class), eq(Map.class)))
+                .willThrow(new org.springframework.web.client.RestClientException("장애"));
+
+        telegramService.sendMessage("111", "안내");
     }
 }
