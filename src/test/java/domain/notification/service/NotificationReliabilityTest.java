@@ -23,6 +23,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -59,7 +62,10 @@ import static org.mockito.Mockito.verify;
  */
 @SpringBootTest(classes = TestApplication.class, properties = {
         "telegram.bot.token=test-token",   // "YOUR_" 로 시작하지 않아야 발송 로직이 실행됨
-        "movie.check.cron=-"               // 스케줄러 자동 실행 비활성화 (테스트에서 직접 호출)
+        "movie.check.cron=-",              // 스케줄러 자동 실행 비활성화 (테스트에서 직접 호출)
+        "notification.outbox.relay-delay-ms=200",  // 재시도 relay 주기 (테스트용으로 짧게)
+        "notification.outbox.base-delay-ms=50",    // 재시도 백오프 시작 간격
+        "notification.outbox.max-attempts=3"       // 최대 발송 시도 횟수
 })
 @DisplayName("알림 신뢰성 / 트랜잭션 범위 재현")
 class NotificationReliabilityTest {
@@ -185,6 +191,43 @@ class NotificationReliabilityTest {
                 .isZero();
     }
 
+    @Test
+    @DisplayName("[무한 재시도] 일시 장애(5xx)가 계속되면 발송 시도는 최대 횟수(3회)로 제한되어야 한다")
+    void transientFailureRetriesAreLimited() {
+        subscribe("5001", "위키드");
+        given(crawler.crawl(anyString(), any(), any()))
+                .willAnswer(inv -> List.of(openScreening(inv.getArgument(0))));
+        given(restTemplate.postForObject(sendMessageUrl(), any(), eq(Map.class)))
+                .willThrow(HttpServerErrorException.create(HttpStatus.BAD_GATEWAY, "Bad Gateway", null, null, null));
+
+        runCycles(5);
+
+        verify(restTemplate, after(2000).times(3)).postForObject(sendMessageUrl(), any(), eq(Map.class));
+    }
+
+    @Test
+    @DisplayName("[영구 실패] 봇 차단(403)처럼 재시도해도 소용없는 실패는 다시 시도하지 않아야 한다")
+    void permanentFailureIsNotRetried() {
+        subscribe("6001", "위키드");
+        given(crawler.crawl(anyString(), any(), any()))
+                .willAnswer(inv -> List.of(openScreening(inv.getArgument(0))));
+        given(restTemplate.postForObject(sendMessageUrl(), any(), eq(Map.class)))
+                .willThrow(HttpClientErrorException.create(HttpStatus.FORBIDDEN,
+                        "Forbidden: bot was blocked by the user", null, null, null));
+
+        runCycles(5);
+
+        verify(restTemplate, after(2000).times(1)).postForObject(sendMessageUrl(), any(), eq(Map.class));
+    }
+
+    /** 스케줄러 주기를 n 번 실행. 주기 사이에 비동기 발송/기록이 끝날 시간을 둔다. */
+    private void runCycles(int n) {
+        for (int i = 0; i < n; i++) {
+            notificationService.checkAndNotify();
+            sleep(300);
+        }
+    }
+
     // ── helpers ───────────────────────────────────────────────
 
     private NotificationSubscription subscribe(String chatId, String movieTitle) {
@@ -207,6 +250,14 @@ class NotificationReliabilityTest {
     @SuppressWarnings("unchecked")
     private static Object chatIdIs(String chatId) {
         return argThat(body -> body instanceof Map<?, ?> m && chatId.equals(m.get("chat_id")));
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static void waitUntil(BooleanSupplier condition, long timeoutMillis) {
