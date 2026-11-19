@@ -12,7 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -101,6 +103,17 @@ public class NotificationOutboxService {
     @Transactional(readOnly = true)
     public List<Long> findDueIds(int limit) {
         return outboxRepository.findDueIds(LocalDateTime.now(), PageRequest.of(0, limit));
+    }
+
+    /** 구독 ID → 최신 발송 상태. Outbox 가 없는 구독(Outbox 도입 전 발송분)은 포함되지 않는다. */
+    @Transactional(readOnly = true)
+    public Map<Long, OutboxStatus> findLatestStatuses(List<Long> subscriptionIds) {
+        if (subscriptionIds.isEmpty()) return Map.of();
+        Map<Long, OutboxStatus> statuses = new HashMap<>();
+        for (var view : outboxRepository.findStatusesBySubscriptionIds(subscriptionIds)) {
+            statuses.put(view.getSubscriptionId(), view.getStatus());   // outboxId 오름차순 → 마지막이 최신
+        }
+        return statuses;
     }
 
     public int releaseStaleLocks() {

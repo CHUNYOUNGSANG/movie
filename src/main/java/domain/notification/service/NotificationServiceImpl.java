@@ -18,6 +18,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import domain.notification.outbox.NotificationOutboxService;
+import domain.notification.outbox.OutboxStatus;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -32,6 +34,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final MovieService movieService;     // SRP: 영화/극장/상영관/스케줄 관리는 Movie 도메인 책임
     private final UserService userService;       // SRP: 사용자 조회/구독 상태 관리는 User 도메인 책임
     private final NotificationStateService notificationStateService;
+    private final NotificationOutboxService outboxService;
     private final List<MovieCrawler> crawlers;   // OCP: 새 크롤러 추가 시 이 코드 수정 없음
 
     @Override
@@ -66,6 +69,12 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional(readOnly = true)
     public List<NotificationSubscription> findByUser(User user) {
         return notificationSubscriptionRepository.findByUser(user);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<Long, OutboxStatus> findDeliveryStatuses(List<Long> subscriptionIds) {
+        return outboxService.findLatestStatuses(subscriptionIds);
     }
 
     @Override
