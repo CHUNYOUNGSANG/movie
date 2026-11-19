@@ -81,6 +81,8 @@ flowchart LR
 |---|---|---|
 | 신규 저장 | 514회 | **8회** |
 | 갱신 (예매 오픈 여부 변경) | 500회 | **4회** |
+| MySQL 8.4 실행 시간 (500건, 신규) | 366.4 ms | **20.9 ms** |
+| MySQL 8.4 실행 시간 (500건, 갱신) | 318.6 ms | **20.8 ms** |
 
 - 영화/극장/상영관은 중복 제거 후 IN 조회 1회씩, 없는 것만 생성 (`persist`로 merge 의 사전 SELECT 제거)
 - 스케줄은 IDENTITY PK 라 Hibernate 배치가 불가해 `JdbcTemplate.batchUpdate` + `ON DUPLICATE KEY UPDATE` 로 upsert
