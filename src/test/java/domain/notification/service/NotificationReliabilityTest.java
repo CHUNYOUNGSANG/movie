@@ -11,6 +11,7 @@ import domain.movie.repository.ScreenTypeRepository;
 import domain.movie.repository.TheaterRepository;
 import domain.notification.entity.NotificationHistory;
 import domain.notification.entity.NotificationSubscription;
+import domain.notification.outbox.NotificationOutboxRepository;
 import domain.notification.repository.NotificationHistoryRepository;
 import domain.notification.repository.NotificationSubscriptionRepository;
 import domain.user.entity.User;
@@ -61,6 +62,8 @@ import static org.mockito.Mockito.verify;
  * - 실제 커밋/롤백을 봐야 하므로 테스트 클래스에 @Transactional 을 붙이지 않는다.
  */
 @SpringBootTest(classes = TestApplication.class, properties = {
+        // 테스트 클래스마다 독립된 DB (다른 컨텍스트의 relay 가 Outbox 를 집어가지 않도록)
+        "spring.datasource.url=jdbc:h2:mem:reliability-${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1",
         "telegram.bot.token=test-token",   // "YOUR_" 로 시작하지 않아야 발송 로직이 실행됨
         "movie.check.cron=-",              // 스케줄러 자동 실행 비활성화 (테스트에서 직접 호출)
         "notification.outbox.relay-delay-ms=200",  // 재시도 relay 주기 (테스트용으로 짧게)
@@ -85,6 +88,7 @@ class NotificationReliabilityTest {
     @Autowired private ScheduleRepository scheduleRepository;
     @Autowired private NotificationSubscriptionRepository subscriptionRepository;
     @Autowired private NotificationHistoryRepository historyRepository;
+    @Autowired private NotificationOutboxRepository outboxRepository;
 
     private static final LocalDate TARGET_DATE = LocalDate.of(2026, 12, 24);
 
@@ -95,6 +99,7 @@ class NotificationReliabilityTest {
 
     @AfterEach
     void cleanUp() {
+        outboxRepository.deleteAllInBatch();
         historyRepository.deleteAllInBatch();
         subscriptionRepository.deleteAllInBatch();
         scheduleRepository.deleteAllInBatch();
@@ -105,29 +110,23 @@ class NotificationReliabilityTest {
     }
 
     @Test
-    @DisplayName("[유실] 텔레그램 발송이 실패하면 구독은 미발송 상태로 남아 다음 주기에 재시도되어야 한다")
-    void sendFailureMustNotMarkSubscriptionAsDone() {
+    @DisplayName("[유실] 텔레그램 발송이 실패해도 재시도되어 결국 발송되고, 실제 발송 후에만 SUCCESS 로 기록되어야 한다")
+    void sendFailureIsRetriedUntilDelivered() {
         NotificationSubscription sub = subscribe("1001", "위키드");
         given(crawler.crawl(anyString(), any(), any()))
                 .willAnswer(inv -> List.of(openScreening(inv.getArgument(0))));
         given(restTemplate.postForObject(sendMessageUrl(), any(), eq(Map.class)))
-                .willThrow(new RestClientException("텔레그램 API 장애 (테스트)"));
+                .willThrow(new RestClientException("텔레그램 API 장애 (테스트)"))   // 1회차 실패
+                .willReturn(Map.of("ok", true));                                  // 2회차 성공
 
         notificationService.checkAndNotify();
 
-        // 비동기 발송 시도가 끝날 때까지 대기
-        verify(restTemplate, timeout(3000)).postForObject(sendMessageUrl(), any(), eq(Map.class));
         waitUntil(() -> historyRepository.count() > 0, 3000);
-
-        NotificationSubscription reloaded = subscriptionRepository.findById(sub.getSubscriptionId()).orElseThrow();
-        List<String> statuses = historyRepository.findAll().stream().map(NotificationHistory::getStatus).toList();
-
-        assertThat(statuses)
-                .as("발송에 실패했는데 이력이 SUCCESS 로 기록됨")
-                .doesNotContain("SUCCESS");
-        assertThat(reloaded.isTriggered())
-                .as("발송에 실패했는데 triggered=true 로 저장되어 다시는 재시도되지 않음 (알림 유실)")
-                .isFalse();
+        verify(restTemplate, times(2)).postForObject(sendMessageUrl(), any(), eq(Map.class));
+        assertThat(historyRepository.findAll()).extracting(NotificationHistory::getStatus)
+                .as("실패 후 재시도로 성공한 1건만 SUCCESS 로 기록")
+                .containsExactly("SUCCESS");
+        assertThat(subscriptionRepository.findById(sub.getSubscriptionId()).orElseThrow().isTriggered()).isTrue();
     }
 
     @Test

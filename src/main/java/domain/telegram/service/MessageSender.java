@@ -12,9 +12,12 @@ public interface MessageSender {
     /** 일반 응답 메시지. 실패해도 예외를 던지지 않는다 (로그만 남김). */
     void sendMessage(String chatId, String text);
 
+    /** 예매 오픈 알림 메시지 본문 생성. Outbox 에 저장해 두었다가 발송한다. */
+    String formatAlerts(List<ScreeningResult> results);
+
     /**
-     * 예매 오픈 알림. 동기로 발송하며, 실패하면 {@link MessageSendException} 을 던진다.
+     * 메시지를 동기로 발송하며, 실패하면 {@link MessageSendException} 을 던진다.
      * 호출자가 발송 결과를 기록하고 재시도 여부를 결정한다.
      */
-    void sendAlerts(String chatId, List<ScreeningResult> results);
+    void deliver(String chatId, String text);
 }

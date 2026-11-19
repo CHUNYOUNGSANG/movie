@@ -1,11 +1,12 @@
 package domain.notification.service;
 
 import domain.movie.dto.ScreeningResult;
-import domain.notification.entity.NotificationHistory;
 import domain.notification.event.NotificationMatchedEvent;
 import domain.notification.entity.NotificationSubscription;
-import domain.notification.repository.NotificationHistoryRepository;
+import domain.notification.outbox.NotificationOutbox;
+import domain.notification.outbox.NotificationOutboxService;
 import domain.notification.repository.NotificationSubscriptionRepository;
+import domain.telegram.service.MessageSender;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -23,7 +24,8 @@ import java.util.List;
 public class NotificationStateService {
 
     private final NotificationSubscriptionRepository subscriptionRepository;
-    private final NotificationHistoryRepository historyRepository;
+    private final NotificationOutboxService outboxService;
+    private final MessageSender messageSender;
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -51,25 +53,10 @@ public class NotificationStateService {
             if (matched.isEmpty()) continue;
 
             sub.setTriggered(true);
-            // 발송은 커밋 이후 NotificationSendListener 에서 수행
-            eventPublisher.publishEvent(
-                    new NotificationMatchedEvent(sub.getSubscriptionId(), sub.getUser().getChatId(), matched));
+            // 구독 상태 변경과 "보낼 메시지" 기록을 같은 트랜잭션으로 커밋 (Transactional Outbox)
+            NotificationOutbox outbox = outboxService.enqueue(sub, messageSender.formatAlerts(matched));
+            // 커밋 이후 즉시 발송 시도 (실패/누락 시 relay 가 재시도)
+            eventPublisher.publishEvent(new NotificationMatchedEvent(outbox.getOutboxId()));
         }
-    }
-
-    /** 발송 성공 기록. */
-    public void recordSuccess(Long subscriptionId) {
-        subscriptionRepository.findById(subscriptionId).ifPresent(sub ->
-                historyRepository.save(NotificationHistory.builder().subscription(sub).status("SUCCESS").build()));
-    }
-
-    /**
-     * 발송 실패 기록. triggered 를 되돌려 다음 주기에 다시 발송 대상이 되게 한다.
-     */
-    public void recordFailure(Long subscriptionId) {
-        subscriptionRepository.findById(subscriptionId).ifPresent(sub -> {
-            sub.setTriggered(false);
-            historyRepository.save(NotificationHistory.builder().subscription(sub).status("FAIL").build());
-        });
     }
 }

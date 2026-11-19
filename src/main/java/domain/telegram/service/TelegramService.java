@@ -60,12 +60,11 @@ public class TelegramService implements MessageSender {
     }
 
     @Override
-    public void sendAlerts(String chatId, List<ScreeningResult> results) {
-        if (results.isEmpty()) return;
+    public void deliver(String chatId, String text) {
         try {
-            post(chatId, formatAll(results));
+            post(chatId, text);
         } catch (Exception e) {
-            throw new MessageSendException("알림 발송 실패 chatId=" + chatId, e);
+            throw new MessageSendException("알림 발송 실패 chatId=" + chatId + ": " + e.getMessage(), e);
         }
     }
 
@@ -85,7 +84,8 @@ public class TelegramService implements MessageSender {
         log.info("텔레그램 전송 완료 → chatId={}", chatId);
     }
 
-    private String formatAll(List<ScreeningResult> results) {
+    @Override
+    public String formatAlerts(List<ScreeningResult> results) {
         ScreeningResult first = results.get(0);
 
         StringBuilder sb = new StringBuilder();
