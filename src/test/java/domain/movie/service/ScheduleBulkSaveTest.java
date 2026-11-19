@@ -14,6 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import support.MySqlTestContainer;
@@ -56,6 +57,7 @@ class ScheduleBulkSaveTest {
     @MockitoBean private MovieCrawler crawler;
 
     @Autowired private MovieService movieService;
+    @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private MovieRepository movieRepository;
     @Autowired private TheaterRepository theaterRepository;
     @Autowired private ScreenTypeRepository screenTypeRepository;
@@ -67,6 +69,22 @@ class ScheduleBulkSaveTest {
         theaterRepository.deleteAllInBatch();
         screenTypeRepository.deleteAllInBatch();
         movieRepository.deleteAllInBatch();
+    }
+
+    @Test
+    @DisplayName("[MySQL 경고] 스케줄 upsert 가 deprecated 문법 경고(1287 VALUES())를 남기지 않아야 한다")
+    void upsertRaisesNoWarnings() {
+        movieService.saveScreenings(screenings(false));   // 신규 INSERT
+        movieService.saveScreenings(screenings(true));    // 중복 키 → UPDATE 경로
+
+        // 서버가 집계한 문장별 경고 수 (performance_schema, 이 테스트 클래스의 DB 로 한정)
+        Long warnings = jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(SUM_WARNINGS), 0)
+                FROM performance_schema.events_statements_summary_by_digest
+                WHERE SCHEMA_NAME = DATABASE() AND DIGEST_TEXT LIKE 'INSERT INTO `schedules`%'
+                """, Long.class);
+        System.out.printf("[MySQL 경고] 스케줄 upsert 경고 수: %d%n", warnings);
+        assertThat(warnings).as("스케줄 upsert 실행 시 MySQL 경고 수").isZero();
     }
 
     @Test
