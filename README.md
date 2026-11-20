@@ -24,6 +24,7 @@ CGV 상영 일정을 주기적으로 크롤링해서, 신청한 조건(영화 / 
 - **Crawling**: Playwright (Chromium)
 - **Messaging**: Telegram Bot API
 - **Infra**: Docker, Docker Compose
+- **Monitoring**: Spring Boot Actuator, Micrometer (Prometheus)
 
 ## 동작 흐름
 
@@ -139,6 +140,21 @@ flowchart LR
 
 👉 상세 정리: 노션 링크 추가 예정
 
+### 모니터링 (헬스 체크 + 알림·크롤링 지표)
+
+알림이 발송 포기(DEAD)로 쌓여도 WARN 로그 말고는 알 방법이 없던 상황을, 봇 차단(403) 3건으로 통합 테스트에서 재현한 뒤 개선했습니다.
+
+| 항목 | Before | After |
+|---|---|---|
+| 헬스 체크 `/actuator/health` | 404 | **200 UP** |
+| DEAD 3건을 알 수 있는 신호 | WARN 로그뿐 | **지표 3종** (적체 수 · 발송 결과 · 크롤링) |
+
+- 알림 적체(상태별 건수, 가장 오래된 대기 시간), 발송 결과(성공·재시도·속도 제한·포기), 크롤링·확인 주기 소요 시간을 Prometheus 지표로 노출
+- 적체 지표는 읽을 때마다 DB 를 조회하지 않고 30초마다 한 번 집계해 수집 횟수와 무관하게 DB 부하 일정
+- 관리용 엔드포인트는 서비스 포트와 분리된 8081 에서만 열고 외부에 공개하지 않음
+
+👉 상세 정리: 노션 링크 추가 예정
+
 ## 실행 방법
 
 ```bash
@@ -151,4 +167,11 @@ docker compose up -d --build
 ```bash
 ./gradlew bootTestRun       # Testcontainers MySQL 로 앱 실행
 ./gradlew test              # 통합 테스트도 MySQL 8.4 컨테이너에서 실행
+```
+
+모니터링 엔드포인트 (관리용 포트 8081, docker compose 에서는 호스트에 공개하지 않음):
+
+```bash
+curl localhost:8081/actuator/health       # 로컬 실행 시
+curl localhost:8081/actuator/prometheus   # 지표 (notification_*, crawl_*)
 ```
