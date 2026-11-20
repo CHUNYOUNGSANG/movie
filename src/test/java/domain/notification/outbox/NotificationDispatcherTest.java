@@ -3,15 +3,19 @@ package domain.notification.outbox;
 import domain.notification.outbox.NotificationOutboxService.OutboxMessage;
 import domain.telegram.service.MessageSendException;
 import domain.telegram.service.MessageSender;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -27,6 +31,7 @@ class NotificationDispatcherTest {
 
     @Mock private NotificationOutboxService outboxService;
     @Mock private MessageSender messageSender;
+    @Spy private MeterRegistry meterRegistry = new SimpleMeterRegistry();
     @InjectMocks private NotificationDispatcher dispatcher;
 
     @Test
@@ -49,6 +54,7 @@ class NotificationDispatcherTest {
         then(messageSender).should().deliver("123", "본문");
         then(outboxService).should().markSent(1L);
         then(outboxService).should(never()).markFailed(anyLong(), any());
+        assertThat(deliveries("sent")).isEqualTo(1);
     }
 
     @Test
@@ -57,10 +63,17 @@ class NotificationDispatcherTest {
         given(outboxService.claim(1L)).willReturn(Optional.of(new OutboxMessage(1L, "123", "본문")));
         MessageSendException error = new MessageSendException("장애", null);
         willThrow(error).given(messageSender).deliver(anyString(), anyString());
+        given(outboxService.markFailed(1L, error)).willReturn(DeliveryResult.DEAD);
 
         dispatcher.dispatch(1L);
 
         then(outboxService).should().markFailed(eq(1L), eq(error));
         then(outboxService).should(never()).markSent(anyLong());
+        assertThat(deliveries("dead")).as("실패 처리 결과가 지표 태그로 기록됨").isEqualTo(1);
+        assertThat(meterRegistry.find("notification.delivery").tag("result", "sent").timer()).isNull();
+    }
+
+    private long deliveries(String result) {
+        return meterRegistry.get("notification.delivery").tag("result", result).timer().count();
     }
 }
