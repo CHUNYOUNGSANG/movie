@@ -34,6 +34,10 @@ dependencies {
     // Web
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 
+    // 모니터링: 헬스 체크 + Prometheus 형식 지표 (/actuator/health, /actuator/prometheus)
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
+
     // JPA + MySQL (운영 / 로컬·테스트는 Testcontainers 로 같은 MySQL 8.4 사용)
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     runtimeOnly 'com.mysql:mysql-connector-j'
