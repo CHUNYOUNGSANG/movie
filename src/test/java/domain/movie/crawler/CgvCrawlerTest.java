@@ -15,7 +15,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Playwright(브라우저)에 의존하는 crawl()/findMovNo()는 라이브 컨텍스트가 있어야 해서 단위 테스트 대상에서 제외.
+ * Playwright(브라우저)에 의존하는 crawl()은 라이브 컨텍스트가 있어야 해서 단위 테스트 대상에서 제외.
  * 순수 로직(사이트 코드 매핑, 시간 파싱, JSON→DTO 변환)만 리플렉션으로 직접 검증.
  */
 @DisplayName("CgvCrawler")
