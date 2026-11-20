@@ -41,6 +41,7 @@ services:
       - playwright-browsers:/playwright-browsers
     ports:
       - "8080:8080"
+      # 8081(관리용 /actuator)은 일부러 공개하지 않음: 같은 docker 네트워크에서 http://app:8081/actuator/prometheus 로 수집
     restart: unless-stopped
 
 volumes:

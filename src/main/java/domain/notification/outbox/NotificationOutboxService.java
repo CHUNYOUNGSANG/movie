@@ -74,8 +74,10 @@ public class NotificationOutboxService {
      * 발송 실패 처리.
      * - 영구 실패(재시도 불가)이거나 최대 시도 횟수에 도달하면 DEAD + FAIL 이력
      * - 그 외에는 지수 백오프(base × 2^(n-1), 최대 1시간) 후 다시 PENDING
+     *
+     * @return 이번 실패를 어떻게 처리했는지 (RETRY / RATE_LIMITED / DEAD)
      */
-    public void markFailed(Long outboxId, Exception cause) {
+    public DeliveryResult markFailed(Long outboxId, Exception cause) {
         NotificationOutbox outbox = outboxRepository.findById(outboxId).orElseThrow();
 
         // 속도 제한(429): 메시지 자체의 실패가 아니므로 시도 횟수를 쓰지 않고, 텔레그램이 알려준 시간 뒤에 다시 보낸다
@@ -84,7 +86,7 @@ public class NotificationOutboxService {
             outbox.setLockedAt(null);
             outbox.setLastError(truncate(cause.getMessage()));
             outbox.setNextAttemptAt(LocalDateTime.now().plus(mse.getRetryAfter()));
-            return;
+            return DeliveryResult.RATE_LIMITED;
         }
 
         int attempts = outbox.getAttemptCount() + 1;
@@ -97,10 +99,11 @@ public class NotificationOutboxService {
             outbox.setStatus(OutboxStatus.DEAD);
             historyRepository.save(NotificationHistory.builder()
                     .subscription(outbox.getSubscription()).status("FAIL").build());
-            return;
+            return DeliveryResult.DEAD;
         }
         outbox.setStatus(OutboxStatus.PENDING);
         outbox.setNextAttemptAt(LocalDateTime.now().plus(backoff(attempts)));
+        return DeliveryResult.RETRY;
     }
 
     /** attempts 회 실패 후 다음 시도까지의 대기 시간 */

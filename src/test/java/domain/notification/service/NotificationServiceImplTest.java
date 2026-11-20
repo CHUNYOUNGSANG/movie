@@ -11,6 +11,7 @@ import domain.notification.entity.NotificationSubscription;
 import domain.notification.repository.NotificationSubscriptionRepository;
 import domain.user.entity.User;
 import domain.user.service.UserService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -49,7 +50,8 @@ class NotificationServiceImplTest {
                 notificationSubscriptionRepository,
                 movieService, userService, notificationStateService, outboxService,
                 List.of(cgvCrawler),
-                Runnable::run   // 크롤링을 호출 스레드에서 바로 실행 (단위 테스트는 순서/상호작용만 검증)
+                Runnable::run,   // 크롤링을 호출 스레드에서 바로 실행 (단위 테스트는 순서/상호작용만 검증)
+                new SimpleMeterRegistry()
         );
     }
 
