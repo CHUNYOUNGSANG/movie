@@ -52,8 +52,9 @@ class NotificationOutboxServiceTest {
     void retryableFailureGoesBackToPending() {
         LocalDateTime before = LocalDateTime.now();
 
-        service.markFailed(1L, new MessageSendException("502", null, true));
+        DeliveryResult result = service.markFailed(1L, new MessageSendException("502", null, true));
 
+        assertThat(result).isEqualTo(DeliveryResult.RETRY);
         assertThat(outbox.getStatus()).isEqualTo(OutboxStatus.PENDING);
         assertThat(outbox.getAttemptCount()).isEqualTo(1);
         assertThat(outbox.getNextAttemptAt()).isAfterOrEqualTo(before.plusSeconds(30));
@@ -65,8 +66,9 @@ class NotificationOutboxServiceTest {
     void exhaustedRetriesGoToDead() {
         outbox.setAttemptCount(2);   // 이번이 3번째 시도
 
-        service.markFailed(1L, new MessageSendException("502", null, true));
+        DeliveryResult result = service.markFailed(1L, new MessageSendException("502", null, true));
 
+        assertThat(result).isEqualTo(DeliveryResult.DEAD);
         assertThat(outbox.getStatus()).isEqualTo(OutboxStatus.DEAD);
         assertThat(outbox.getAttemptCount()).isEqualTo(3);
         then(historyRepository).should().save(argThat(h -> "FAIL".equals(h.getStatus())));
@@ -87,7 +89,8 @@ class NotificationOutboxServiceTest {
         outbox.setAttemptCount(2);   // 일반 실패였다면 이번에 DEAD
         LocalDateTime before = LocalDateTime.now();
 
-        service.markFailed(1L, new MessageSendException("429", null, true, Duration.ofSeconds(5)));
+        DeliveryResult result = service.markFailed(1L, new MessageSendException("429", null, true, Duration.ofSeconds(5)));
+        assertThat(result).isEqualTo(DeliveryResult.RATE_LIMITED);
 
         assertThat(outbox.getStatus()).isEqualTo(OutboxStatus.PENDING);
         assertThat(outbox.getAttemptCount()).isEqualTo(2);
