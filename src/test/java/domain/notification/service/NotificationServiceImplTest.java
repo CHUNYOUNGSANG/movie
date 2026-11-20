@@ -1,5 +1,6 @@
 package domain.notification.service;
 
+import domain.movie.crawler.CrawlException;
 import domain.movie.crawler.MovieCrawler;
 import domain.movie.dto.ScreeningResult;
 import domain.movie.entity.Movie;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
@@ -43,6 +45,7 @@ class NotificationServiceImplTest {
     @Mock private MovieCrawler cgvCrawler;
 
     private NotificationServiceImpl service;
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     @BeforeEach
     void setUp() {
@@ -51,7 +54,7 @@ class NotificationServiceImplTest {
                 movieService, userService, notificationStateService, outboxService,
                 List.of(cgvCrawler),
                 Runnable::run,   // 크롤링을 호출 스레드에서 바로 실행 (단위 테스트는 순서/상호작용만 검증)
-                new SimpleMeterRegistry()
+                meterRegistry
         );
     }
 
@@ -172,6 +175,24 @@ class NotificationServiceImplTest {
 
             then(movieService).shouldHaveNoInteractions();
             then(notificationStateService).should(never()).markMatched(any(), any());
+        }
+
+        @Test
+        @DisplayName("크롤링이 실패하면(CrawlException) 저장/매칭을 하지 않고, 결과 없음이 아니라 오류로 기록한다")
+        void recordsCrawlFailureAsError() {
+            NotificationSubscription sub = NotificationSubscription.builder()
+                    .subscriptionId(1L).user(user("123")).movie(movie("스파이더맨"))
+                    .targetDate(LocalDate.of(2026, 9, 4)).build();
+
+            given(notificationStateService.findPending()).willReturn(List.of(sub));
+            given(cgvCrawler.getCinemaName()).willReturn("CGV");
+            given(cgvCrawler.crawl(any(), any(), any())).willThrow(new CrawlException("http_403", "Cloudflare 차단 (테스트)"));
+
+            service.checkAndNotify();   // 예외를 밖으로 던지지 않음
+
+            then(movieService).shouldHaveNoInteractions();
+            assertThat(meterRegistry.get("crawl.duration").tag("outcome", "error").timer().count()).isEqualTo(1);
+            assertThat(meterRegistry.find("crawl.duration").tag("outcome", "empty").timer()).isNull();
         }
     }
 

@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("CgvCrawler")
 class CgvCrawlerTest {
 
-    private final CgvCrawler crawler = new CgvCrawler();
+    private final CgvCrawler crawler = new CgvCrawler(new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
 
     @Nested
     @DisplayName("resolveSiteNos()")
