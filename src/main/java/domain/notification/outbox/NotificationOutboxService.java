@@ -77,6 +77,16 @@ public class NotificationOutboxService {
      */
     public void markFailed(Long outboxId, Exception cause) {
         NotificationOutbox outbox = outboxRepository.findById(outboxId).orElseThrow();
+
+        // 속도 제한(429): 메시지 자체의 실패가 아니므로 시도 횟수를 쓰지 않고, 텔레그램이 알려준 시간 뒤에 다시 보낸다
+        if (cause instanceof MessageSendException mse && mse.isRateLimited()) {
+            outbox.setStatus(OutboxStatus.PENDING);
+            outbox.setLockedAt(null);
+            outbox.setLastError(truncate(cause.getMessage()));
+            outbox.setNextAttemptAt(LocalDateTime.now().plus(mse.getRetryAfter()));
+            return;
+        }
+
         int attempts = outbox.getAttemptCount() + 1;
         outbox.setAttemptCount(attempts);
         outbox.setLastError(truncate(cause.getMessage()));
