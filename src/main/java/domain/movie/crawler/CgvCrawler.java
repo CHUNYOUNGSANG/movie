@@ -15,6 +15,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Supplier;
 
 /**
  * Playwright 기반 CGV 크롤러.
@@ -50,7 +51,16 @@ public class CgvCrawler implements MovieCrawler {
      * 크롤링 스레드마다 자기 브라우저 세션을 가진다 (Playwright 는 만든 스레드에서만 사용 가능).
      * 처음 크롤링할 때 만들어지고, 크롤링 스레드풀의 스레드가 살아 있는 동안 재사용된다.
      */
-    private final PerThreadResource<Session> sessions = new PerThreadResource<>(Session::open);
+    private final PerThreadResource<Session> sessions;
+
+    public CgvCrawler() {
+        this(Session::open);
+    }
+
+    /** 테스트에서 실제 브라우저 대신 가짜 세션을 넣기 위한 생성자 */
+    CgvCrawler(Supplier<Session> sessionFactory) {
+        this.sessions = new PerThreadResource<>(sessionFactory);
+    }
 
     /** 스레드 하나가 쓰는 Playwright + 브라우저 + 컨텍스트 + Cloudflare 인증 상태 */
     static final class Session implements AutoCloseable {
@@ -59,7 +69,7 @@ public class CgvCrawler implements MovieCrawler {
         private final BrowserContext context;
         private boolean cfReady = false;
 
-        private Session(Playwright playwright, Browser browser, BrowserContext context) {
+        Session(Playwright playwright, Browser browser, BrowserContext context) {
             this.playwright = playwright;
             this.browser = browser;
             this.context = context;
