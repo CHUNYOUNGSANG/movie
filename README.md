@@ -18,7 +18,7 @@ CGV 상영 일정을 주기적으로 크롤링해서, 신청한 조건(영화 / 
 ## 기술 스택
 
 - **Backend**: Java 17, Spring Boot 4.1, Spring Data JPA, Flyway
-- **DB**: MySQL 8.4 (운영), H2 (로컬)
+- **DB**: MySQL 8.4 (운영 / 로컬·테스트는 Testcontainers)
 - **Crawling**: Playwright (Chromium)
 - **Messaging**: Telegram Bot API
 - **Infra**: Docker, Docker Compose
@@ -113,9 +113,9 @@ cp .env.example .env        # TELEGRAM_BOT_TOKEN 등 입력
 docker compose up -d --build
 ```
 
-로컬 실행 / 테스트:
+로컬 실행 / 테스트 (Docker 필요, MySQL 8.4 컨테이너가 자동으로 뜨고 종료 시 정리됨):
 
 ```bash
-./gradlew bootRun           # H2 인메모리 DB
-./gradlew test
+./gradlew bootTestRun       # Testcontainers MySQL 로 앱 실행
+./gradlew test              # 통합 테스트도 MySQL 8.4 컨테이너에서 실행
 ```

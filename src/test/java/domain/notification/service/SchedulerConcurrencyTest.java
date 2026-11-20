@@ -21,6 +21,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import support.MySqlTestContainer;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -47,12 +50,16 @@ import static org.mockito.Mockito.verify;
  * 서버 두 대를 스레드 두 개로 흉내 낸다.
  */
 @SpringBootTest(classes = TestApplication.class, properties = {
-        "spring.datasource.url=jdbc:h2:mem:concurrency-${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1",
         "telegram.bot.token=test-token",
         "movie.check.cron=-"
 })
 @DisplayName("스케줄러 동시 실행 재현")
 class SchedulerConcurrencyTest {
+
+    @DynamicPropertySource
+    static void mysql(DynamicPropertyRegistry registry) {
+        MySqlTestContainer.registerFreshDatabase(registry);   // 테스트 클래스마다 독립된 DB
+    }
 
     private static final LocalDate TARGET_DATE = LocalDate.of(2026, 12, 24);
 

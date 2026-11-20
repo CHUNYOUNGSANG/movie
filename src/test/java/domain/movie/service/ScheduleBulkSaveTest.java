@@ -14,6 +14,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import support.MySqlTestContainer;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.RestTemplate;
@@ -31,13 +35,17 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 실제 JDBC 실행(DB 왕복) 횟수를 세어 검증한다.
  */
 @SpringBootTest(classes = TestApplication.class, properties = {
-        "spring.datasource.url=jdbc:h2:mem:bulk-${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1",
         "telegram.bot.token=test-token",
         "movie.check.cron=-"
 })
 @Import(QueryCounter.Config.class)
 @DisplayName("스케줄 저장 벌크 처리 재현")
 class ScheduleBulkSaveTest {
+
+    @DynamicPropertySource
+    static void mysql(DynamicPropertyRegistry registry) {
+        MySqlTestContainer.registerFreshDatabase(registry);   // 테스트 클래스마다 독립된 DB
+    }
 
     /** 극장 5곳 × 상영관 2종 × 시간대 10개 = 100건 */
     private static final int RESULT_SIZE = 100;
@@ -49,6 +57,7 @@ class ScheduleBulkSaveTest {
     @MockitoBean private MovieCrawler crawler;
 
     @Autowired private MovieService movieService;
+    @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private MovieRepository movieRepository;
     @Autowired private TheaterRepository theaterRepository;
     @Autowired private ScreenTypeRepository screenTypeRepository;
@@ -60,6 +69,33 @@ class ScheduleBulkSaveTest {
         theaterRepository.deleteAllInBatch();
         screenTypeRepository.deleteAllInBatch();
         movieRepository.deleteAllInBatch();
+    }
+
+    @Test
+    @DisplayName("[MySQL 경고] 스케줄 upsert 가 deprecated 문법 경고(1287 VALUES())를 남기지 않아야 한다")
+    void upsertRaisesNoWarnings() {
+        // performance_schema 집계는 누적값이라 같은 DB를 쓰는 다른 테스트 몫을 빼기 위해 전후 차이로 측정
+        long[] before = scheduleInsertStats();
+        movieService.saveScreenings(screenings(false));   // 신규 INSERT
+        movieService.saveScreenings(screenings(true));    // 중복 키 → UPDATE 경로
+        long[] after = scheduleInsertStats();
+
+        long statements = after[0] - before[0];
+        long warnings = after[1] - before[1];
+        System.out.printf("[MySQL 경고] 스케줄 upsert 경고 수: %d, 서버가 받은 INSERT 문장 수: %d (100건 × 2회 저장)%n",
+                warnings, statements);
+        assertThat(warnings).as("스케줄 upsert 실행 시 MySQL 경고 수").isZero();
+        // rewriteBatchedStatements 가 별칭 문법에서도 배치를 다중 행 INSERT 1문장으로 바꾸는지 확인
+        assertThat(statements).as("저장 1회당 다중 행 INSERT 1문장").isEqualTo(2);
+    }
+
+    /** 이 테스트 클래스 DB 에서 서버가 실행한 schedules INSERT 의 {문장 수, 경고 수} (performance_schema) */
+    private long[] scheduleInsertStats() {
+        return jdbcTemplate.queryForObject("""
+                SELECT COALESCE(SUM(COUNT_STAR), 0), COALESCE(SUM(SUM_WARNINGS), 0)
+                FROM performance_schema.events_statements_summary_by_digest
+                WHERE SCHEMA_NAME = DATABASE() AND DIGEST_TEXT LIKE 'INSERT INTO `schedules`%'
+                """, (rs, n) -> new long[]{rs.getLong(1), rs.getLong(2)});
     }
 
     @Test

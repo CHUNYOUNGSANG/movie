@@ -19,6 +19,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import support.MySqlTestContainer;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.RestTemplate;
@@ -45,13 +48,17 @@ import static org.mockito.Mockito.verify;
  */
 @SpringBootTest(classes = TestApplication.class, properties = {
         // 테스트 클래스마다 독립된 DB (다른 컨텍스트의 relay 가 Outbox 를 집어가지 않도록)
-        "spring.datasource.url=jdbc:h2:mem:recovery-${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1",
         "telegram.bot.token=test-token",
         "movie.check.cron=-",
         "notification.outbox.relay-delay-ms=200"
 })
 @DisplayName("커밋 후 발송 유실 복구 재현")
 class NotificationRecoveryTest {
+
+    @DynamicPropertySource
+    static void mysql(DynamicPropertyRegistry registry) {
+        MySqlTestContainer.registerFreshDatabase(registry);   // 테스트 클래스마다 독립된 DB
+    }
 
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;
