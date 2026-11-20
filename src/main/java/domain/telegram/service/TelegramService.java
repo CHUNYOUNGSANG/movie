@@ -13,6 +13,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+import java.time.Duration;
 import java.util.Map;
 
 @Slf4j
@@ -21,6 +24,7 @@ import java.util.Map;
 public class TelegramService implements MessageSender {
 
     private final RestTemplate restTemplate;
+    private final TelegramRateLimiter rateLimiter;
 
     @Value("${telegram.bot.token}")
     private String botToken;
@@ -67,7 +71,8 @@ public class TelegramService implements MessageSender {
         } catch (Exception e) {
             // 원본 예외(cause)는 붙이지 않는다: RestTemplate 예외 메시지에 토큰이 포함된 URL 이 들어 있어
             // 스택트레이스 로깅이나 DB(last_error) 저장 시 토큰이 노출될 수 있다
-            throw new MessageSendException("알림 발송 실패 chatId=" + chatId + ": " + redact(e), null, isRetryable(e));
+            throw new MessageSendException("알림 발송 실패 chatId=" + chatId + ": " + redact(e), null,
+                    isRetryable(e), retryAfter(e));
         }
     }
 
@@ -89,6 +94,19 @@ public class TelegramService implements MessageSender {
         return true;
     }
 
+    /** 응답 본문 예: {"ok":false,"error_code":429,"parameters":{"retry_after":5}} */
+    private static final Pattern RETRY_AFTER = Pattern.compile("\"retry_after\"\\s*:\\s*(\\d+)");
+    private static final Duration DEFAULT_RETRY_AFTER = Duration.ofSeconds(1);
+
+    /** 429 이면 텔레그램이 알려준 대기 시간(초), 값이 없으면 1초. 429 가 아니면 null */
+    static Duration retryAfter(Exception e) {
+        if (!(e instanceof HttpClientErrorException clientError) || clientError.getStatusCode().value() != 429) {
+            return null;
+        }
+        Matcher m = RETRY_AFTER.matcher(clientError.getResponseBodyAsString());
+        return m.find() ? Duration.ofSeconds(Long.parseLong(m.group(1))) : DEFAULT_RETRY_AFTER;
+    }
+
     private void post(String chatId, String text) {
         if (botToken.startsWith("YOUR_")) {
             log.warn("[텔레그램 미설정] chatId={}, 메시지:\n{}", chatId, text);
@@ -101,7 +119,22 @@ public class TelegramService implements MessageSender {
         body.put("text", text);
         body.put("parse_mode", "HTML");
 
-        restTemplate.postForObject(url, body, Map.class);
+        try {
+            rateLimiter.acquire();   // 전역 발송 속도 제한 (초당 약 30건) 안에서 고르게 분산
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("발송 대기 중 인터럽트", e);
+        }
+        try {
+            restTemplate.postForObject(url, body, Map.class);
+        } catch (HttpClientErrorException e) {
+            Duration retryAfter = retryAfter(e);
+            if (retryAfter != null) {
+                rateLimiter.pause(retryAfter);   // flood control 중에는 다른 스레드도 보내지 않도록 전체 멈춤
+                log.warn("텔레그램 속도 제한(429): {}초 동안 발송 중단", retryAfter.toSeconds());
+            }
+            throw e;
+        }
         log.info("텔레그램 전송 완료 → chatId={}", chatId);
     }
 
