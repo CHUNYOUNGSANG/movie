@@ -13,6 +13,12 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50      # INSERT/UPDATE 를 묶어서 실행 (IDENTITY PK 엔티티는 제외됨)
+        order_inserts: true
+        order_updates: true
   h2:
     console:
       enabled: true

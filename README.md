@@ -73,6 +73,23 @@ flowchart LR
 
 👉 상세 정리: 노션 링크 추가 예정
 
+### 크롤링 결과 저장 벌크 처리
+
+결과 1건마다 영화/극장/상영관/스케줄을 조회하고 저장하던 구조를 개선했습니다. (실제 JDBC 실행 횟수 측정)
+
+| 크롤링 결과 100건 저장 | Before | After |
+|---|---|---|
+| 신규 저장 | 514회 | **8회** |
+| 갱신 (예매 오픈 여부 변경) | 500회 | **4회** |
+| MySQL 8.4 실행 시간 (500건, 신규) | 366.4 ms | **20.9 ms** |
+| MySQL 8.4 실행 시간 (500건, 갱신) | 318.6 ms | **20.8 ms** |
+
+- 영화/극장/상영관은 중복 제거 후 IN 조회 1회씩, 없는 것만 생성 (`persist`로 merge 의 사전 SELECT 제거)
+- 스케줄은 IDENTITY PK 라 Hibernate 배치가 불가해 `JdbcTemplate.batchUpdate` + `ON DUPLICATE KEY UPDATE` 로 upsert
+- `hibernate.jdbc.batch_size`, MySQL `rewriteBatchedStatements=true` 설정
+
+👉 상세 정리: 노션 링크 추가 예정
+
 ## 실행 방법
 
 ```bash
