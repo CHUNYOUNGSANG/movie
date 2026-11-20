@@ -8,6 +8,8 @@ import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.options.RequestOptions;
 import domain.movie.dto.ScreeningResult;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -35,16 +37,19 @@ class CgvCrawlerFailureTest {
     private static final LocalDate DATE = LocalDate.of(2026, 12, 24);
     private static final int ALL_SITES = new LinkedHashSet<>(CgvCrawler.THEATER_SITE_NO.values()).size();
 
+    private final MeterRegistry registry = new SimpleMeterRegistry();
+
     // ── 조회 실패: 빈 결과가 아니라 실패로 알려야 한다 ──────────────────
 
     @Test
     @DisplayName("[브라우저 실행 실패] Chromium 을 띄우지 못하면 실패로 알려야 한다")
     void browserLaunchFailureIsReported() {
-        CgvCrawler crawler = new CgvCrawler(() -> {
+        CgvCrawler crawler = new CgvCrawler(registry, () -> {
             throw new IllegalStateException("Executable doesn't exist (테스트)");
         });
 
         assertReportedAsFailure("브라우저 실행 실패", () -> crawler.crawl("위키드", null, DATE));
+        assertThat(errors("browser", "browser")).isEqualTo(1);
     }
 
     @Test
@@ -53,6 +58,7 @@ class CgvCrawlerFailureTest {
         CgvCrawler crawler = crawlerWith(url -> new Reply(403, "<html>Just a moment...</html>"));
 
         assertReportedAsFailure("Cloudflare 차단(403)", () -> crawler.crawl("위키드", null, DATE));
+        assertThat(errors("movie_search", "http_403")).isEqualTo(1);
     }
 
     @Test
@@ -63,6 +69,26 @@ class CgvCrawlerFailureTest {
                 : new Reply(502, "Bad Gateway"));
 
         assertReportedAsFailure("스케줄 API 502 (극장 " + ALL_SITES + "곳 전부)", () -> crawler.crawl("위키드", null, DATE));
+        assertThat(errors("schedule", "http_502")).as("극장마다 한 번씩").isEqualTo(ALL_SITES);
+    }
+
+    @Test
+    @DisplayName("[부분 실패] 일부 극장만 실패하면 나머지 결과는 돌려주고, 실패한 극장 수는 지표로 남긴다")
+    void partialFailureKeepsOtherResultsAndIsCounted() {
+        List<String> sites = List.copyOf(new LinkedHashSet<>(CgvCrawler.THEATER_SITE_NO.values()));
+        List<String> failing = sites.subList(0, 3);
+        CgvCrawler crawler = crawlerWith(url -> {
+            if (url.contains("searchAtktTopPostrList")) return new Reply(200, MOVIE_FOUND);
+            String siteNo = siteNoOf(url);
+            return failing.contains(siteNo) ? new Reply(502, "Bad Gateway") : new Reply(200, schedule(siteNo));
+        });
+
+        List<ScreeningResult> results = crawler.crawl("위키드", null, DATE);
+
+        System.out.printf("[크롤러 오류] %-30s → 결과 %d건, crawl.errors{schedule,http_502} %.0f%n",
+                "극장 " + sites.size() + "곳 중 3곳 502", results.size(), errors("schedule", "http_502"));
+        assertThat(results).as("성공한 극장의 결과").hasSize(sites.size() - 3);
+        assertThat(errors("schedule", "http_502")).isEqualTo(3);
     }
 
     // ── 정상 동작: 지금도 맞고, 바뀌면 안 된다 ──────────────────────────
@@ -124,8 +150,13 @@ class CgvCrawlerFailureTest {
     }
 
     /** CGV API 를 흉내 내는 가짜 Playwright 세션 */
-    static CgvCrawler crawlerWith(Function<String, Reply> cgv) {
-        return new CgvCrawler(() -> fakeSession(cgv));
+    private CgvCrawler crawlerWith(Function<String, Reply> cgv) {
+        return new CgvCrawler(registry, () -> fakeSession(cgv));
+    }
+
+    private double errors(String stage, String reason) {
+        var counter = registry.find("crawl.errors").tag("stage", stage).tag("reason", reason).counter();
+        return counter == null ? 0 : counter.count();
     }
 
     static CgvCrawler.Session fakeSession(Function<String, Reply> cgv) {

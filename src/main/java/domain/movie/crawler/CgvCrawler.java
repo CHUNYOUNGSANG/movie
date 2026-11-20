@@ -6,7 +6,9 @@ import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.RequestOptions;
 import domain.movie.dto.ScreeningResult;
 import jakarta.annotation.PreDestroy;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.net.URLEncoder;
@@ -52,14 +54,26 @@ public class CgvCrawler implements MovieCrawler {
      * 처음 크롤링할 때 만들어지고, 크롤링 스레드풀의 스레드가 살아 있는 동안 재사용된다.
      */
     private final PerThreadResource<Session> sessions;
+    private final MeterRegistry meterRegistry;
 
-    public CgvCrawler() {
-        this(Session::open);
+    @Autowired
+    public CgvCrawler(MeterRegistry meterRegistry) {
+        this(meterRegistry, Session::open);
     }
 
     /** 테스트에서 실제 브라우저 대신 가짜 세션을 넣기 위한 생성자 */
-    CgvCrawler(Supplier<Session> sessionFactory) {
+    CgvCrawler(MeterRegistry meterRegistry, Supplier<Session> sessionFactory) {
+        this.meterRegistry = meterRegistry;
         this.sessions = new PerThreadResource<>(sessionFactory);
+    }
+
+    /**
+     * 지표 crawl.errors{cinema, stage, reason}: 크롤링 중 실패 횟수.
+     * 극장 일부만 실패해 결과는 돌려준 경우(부분 실패)도 여기에만 기록된다.
+     * stage: browser / cloudflare / movie_search / schedule, reason: http_403, http_502, request_failed, bad_response ...
+     */
+    private void recordError(String stage, String reason) {
+        meterRegistry.counter("crawl.errors", "cinema", getCinemaName(), "stage", stage, "reason", reason).increment();
     }
 
     /** 스레드 하나가 쓰는 Playwright + 브라우저 + 컨텍스트 + Cloudflare 인증 상태 */
@@ -120,12 +134,19 @@ public class CgvCrawler implements MovieCrawler {
         try {
             session = sessions.get();
         } catch (RuntimeException e) {
+            recordError("browser", "browser");
             throw new CrawlException("browser", "Playwright 브라우저 세션 생성 실패: " + e.getMessage(), e);
         }
         try {
             ensureCfReady(session);
 
-            Optional<String> movNo = findMovNo(session, movieTitle);
+            Optional<String> movNo;
+            try {
+                movNo = findMovNo(session, movieTitle);
+            } catch (CrawlException e) {
+                recordError("movie_search", e.getReason());
+                throw e;
+            }
             if (movNo.isEmpty()) {
                 log.warn("CGV: 영화를 찾을 수 없습니다 [{}]", movieTitle);
                 return List.of();
@@ -143,6 +164,7 @@ public class CgvCrawler implements MovieCrawler {
                     // 일부 극장 실패는 나머지 결과를 살린다
                     failed++;
                     lastFailure = e;
+                    recordError("schedule", e.getReason());
                     log.warn("CGV 스케줄 조회 실패 (movNo={}, siteNo={}): {}", movNo.get(), siteNo, e.getMessage());
                 }
             }
@@ -160,6 +182,7 @@ public class CgvCrawler implements MovieCrawler {
             throw e;
         } catch (RuntimeException e) {
             session.cfReady = false;
+            recordError("unknown", "request_failed");
             throw new CrawlException("request_failed", "CGV 크롤링 실패: " + e.getMessage(), e);
         }
     }
@@ -176,6 +199,7 @@ public class CgvCrawler implements MovieCrawler {
             session.cfReady = true;
             log.info("CGV Cloudflare 인증 완료");
         } catch (Exception e) {
+            recordError("cloudflare", "request_failed");
             log.warn("CGV CF 인증 실패 (계속 시도): {}", e.getMessage());
         }
     }
