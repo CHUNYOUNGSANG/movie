@@ -11,6 +11,8 @@ import domain.notification.entity.NotificationSubscription;
 import domain.notification.repository.NotificationSubscriptionRepository;
 import domain.user.entity.User;
 import domain.user.service.UserService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -23,6 +25,7 @@ import domain.notification.outbox.NotificationOutboxService;
 import domain.notification.outbox.OutboxStatus;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutionException;
@@ -43,6 +46,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final List<MovieCrawler> crawlers;   // OCP: 새 크롤러 추가 시 이 코드 수정 없음
     @Qualifier("crawlExecutor")
     private final Executor crawlExecutor;
+    private final MeterRegistry meterRegistry;
 
     @Override
     public NotificationSubscription register(NotificationRegisterRequest req) {
@@ -145,12 +149,31 @@ public class NotificationServiceImpl implements NotificationService {
     private record CrawlOutcome(List<Long> subscriptionIds, List<ScreeningResult> results) {
     }
 
-    /** 크롤링만 수행 (트랜잭션 없음, 크롤링 스레드에서 실행) */
+    /**
+     * 크롤링만 수행 (트랜잭션 없음, 크롤링 스레드에서 실행)
+     * 지표 crawl.duration{cinema, outcome=found|empty|error}: 크롤링 한 번의 소요 시간과 결과
+     */
     private CrawlOutcome crawl(MovieCrawler crawler, String movieTitle,
                                String siteHint, LocalDate targetDate, List<Long> subscriptionIds) {
-        List<ScreeningResult> results = crawler.crawl(movieTitle, siteHint, targetDate);
+        Timer.Sample sample = Timer.start(meterRegistry);
+        List<ScreeningResult> results;
+        try {
+            results = crawler.crawl(movieTitle, siteHint, targetDate);
+        } catch (RuntimeException e) {
+            sample.stop(crawlTimer(crawler, "error"));
+            throw e;
+        }
+        sample.stop(crawlTimer(crawler, results.isEmpty() ? "empty" : "found"));
         log.info("[{}] {} siteHint={} {} → {}건", crawler.getCinemaName(), movieTitle, siteHint, targetDate, results.size());
         return new CrawlOutcome(subscriptionIds, results);
+    }
+
+    private Timer crawlTimer(MovieCrawler crawler, String outcome) {
+        return Timer.builder("crawl.duration")
+                .description("크롤링 한 번(영화|지점|날짜 그룹)의 소요 시간과 결과")
+                .tag("cinema", Objects.requireNonNullElse(crawler.getCinemaName(), "unknown"))
+                .tag("outcome", outcome)
+                .register(meterRegistry);
     }
 
     /** 크롤링 하나가 실패해도 나머지 그룹은 계속 처리한다 */
