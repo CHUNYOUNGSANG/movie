@@ -33,6 +33,20 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
             """)
     List<Long> findDueIds(@Param("now") LocalDateTime now, Pageable pageable);
 
+    /** 구독별 발송 상태 (오래된 것부터, 같은 구독에 여러 건이면 마지막 것이 최신) */
+    @Query("""
+            select o.subscription.subscriptionId as subscriptionId, o.status as status
+              from NotificationOutbox o
+             where o.subscription.subscriptionId in :subscriptionIds
+             order by o.outboxId
+            """)
+    List<DeliveryStatusView> findStatusesBySubscriptionIds(@Param("subscriptionIds") List<Long> subscriptionIds);
+
+    interface DeliveryStatusView {
+        Long getSubscriptionId();
+        OutboxStatus getStatus();
+    }
+
     /** 발송 중 서버가 죽어 SENDING 에 멈춘 건을 다시 PENDING 으로 되돌린다. */
     @Modifying
     @Query("""

@@ -2,6 +2,7 @@ package domain.telegram.service;
 
 import domain.notification.dto.NotificationRegisterRequest;
 import domain.notification.entity.NotificationSubscription;
+import domain.notification.outbox.OutboxStatus;
 import domain.notification.service.NotificationService;
 import domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 @Slf4j
@@ -41,7 +43,7 @@ public class TelegramPollingService {
             /start   — 알림 구독 시작
             /stop    — 알림 구독 해제
             /list    — 대기 중인 알림 목록
-            /history — 완료된 알림 목록
+            /history — 알림 기록 (발송 결과 포함)
             /help    — 사용법 안내
 
             <b>알림 신청</b>
@@ -141,45 +143,64 @@ public class TelegramPollingService {
 
     private void handleList(String chatId) {
         respondWithSubscriptions(chatId, sub -> !sub.isTriggered(),
-                "📋 <b>대기 중인 알림</b>\n\n",
                 "대기 중인 알림이 없습니다.\n/add 명령어로 등록해보세요!\n완료된 알림 보기: /history",
-                "\n취소하려면: /cancel [번호]\n완료된 알림 보기: /history");
+                subs -> "📋 <b>대기 중인 알림</b>\n\n"
+                        + lines(subs, sub -> "")
+                        + "\n취소하려면: /cancel [번호]\n완료된 알림 보기: /history");
     }
 
+    /** 매칭된 알림과 실제 발송 결과(Outbox 상태)를 함께 보여준다. 발송에 실패한 알림을 완료로 보이지 않게 한다. */
     private void handleHistory(String chatId) {
         respondWithSubscriptions(chatId, NotificationSubscription::isTriggered,
-                "✅ <b>완료된 알림</b>\n\n",
                 "완료된 알림이 없습니다.",
-                "");
+                subs -> {
+                    Map<Long, OutboxStatus> statuses = notificationService.findDeliveryStatuses(
+                            subs.stream().map(NotificationSubscription::getSubscriptionId).toList());
+                    boolean anyFailed = statuses.containsValue(OutboxStatus.DEAD);
+                    return "📜 <b>알림 기록</b>\n\n"
+                            + lines(subs, sub -> deliveryLabel(statuses.get(sub.getSubscriptionId())))
+                            + (anyFailed ? "\n❌ 발송 실패: 텔레그램 전송에 끝내 실패한 알림이에요. 예매 오픈 여부를 직접 확인해주세요." : "");
+                });
+    }
+
+    private static String deliveryLabel(OutboxStatus status) {
+        if (status == null) return "✅ ";   // Outbox 도입 전에 발송된 알림
+        return switch (status) {
+            case SENT -> "✅ ";
+            case PENDING, SENDING -> "⏳ 발송 중 ";
+            case DEAD -> "❌ 발송 실패 ";
+        };
     }
 
     private void respondWithSubscriptions(String chatId, Predicate<NotificationSubscription> filter,
-                                           String header, String emptyMessage, String footer) {
+                                          String emptyMessage,
+                                          Function<List<NotificationSubscription>, String> render) {
         userService.findByChatId(chatId).ifPresentOrElse(
                 user -> {
                     List<NotificationSubscription> subscriptions = notificationService.findByUser(user).stream()
                             .filter(filter)
                             .toList();
-                    if (subscriptions.isEmpty()) {
-                        messageSender.sendMessage(chatId, emptyMessage);
-                        return;
-                    }
-                    StringBuilder sb = new StringBuilder(header);
-                    for (NotificationSubscription sub : subscriptions) {
-                        sb.append(String.format(
-                                "#%d %s | %s | %s | %s\n",
-                                sub.getSubscriptionId(),
-                                sub.getMovie().getTitle(),
-                                sub.getTargetDate(),
-                                sub.getTheater() != null ? sub.getTheater().getBranchName() : "전체 지점",
-                                sub.getScreenType() != null ? sub.getScreenType().getTypeName() : "전체 관"
-                        ));
-                    }
-                    sb.append(footer);
-                    messageSender.sendMessage(chatId, sb.toString());
+                    messageSender.sendMessage(chatId,
+                            subscriptions.isEmpty() ? emptyMessage : render.apply(subscriptions));
                 },
                 () -> messageSender.sendMessage(chatId, "/start 를 먼저 입력해주세요.")
         );
+    }
+
+    private static String lines(List<NotificationSubscription> subscriptions,
+                                Function<NotificationSubscription, String> prefix) {
+        StringBuilder sb = new StringBuilder();
+        for (NotificationSubscription sub : subscriptions) {
+            sb.append(prefix.apply(sub)).append(String.format(
+                    "#%d %s | %s | %s | %s\n",
+                    sub.getSubscriptionId(),
+                    sub.getMovie().getTitle(),
+                    sub.getTargetDate(),
+                    sub.getTheater() != null ? sub.getTheater().getBranchName() : "전체 지점",
+                    sub.getScreenType() != null ? sub.getScreenType().getTypeName() : "전체 관"
+            ));
+        }
+        return sb.toString();
     }
 
     private void handleAdd(String chatId, String text) {
