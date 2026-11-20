@@ -47,6 +47,27 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
         OutboxStatus getStatus();
     }
 
+    /** 모니터링용: 상태별 건수 (SENT 는 계속 늘어나기만 하므로 제외) */
+    @Query("""
+            select o.status as status, count(o) as count
+              from NotificationOutbox o
+             where o.status <> domain.notification.outbox.OutboxStatus.SENT
+             group by o.status
+            """)
+    List<StatusCountView> countUnsentByStatus();
+
+    interface StatusCountView {
+        OutboxStatus getStatus();
+        long getCount();
+    }
+
+    /** 모니터링용: 가장 오래 기다리고 있는 PENDING 의 생성 시각 */
+    @Query("""
+            select min(o.createdAt) from NotificationOutbox o
+             where o.status = domain.notification.outbox.OutboxStatus.PENDING
+            """)
+    LocalDateTime findOldestPendingCreatedAt();
+
     /** 발송 중 서버가 죽어 SENDING 에 멈춘 건을 다시 PENDING 으로 되돌린다. */
     @Modifying
     @Query("""
