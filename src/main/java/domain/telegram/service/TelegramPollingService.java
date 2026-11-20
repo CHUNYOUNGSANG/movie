@@ -79,7 +79,9 @@ public class TelegramPollingService {
                 processUpdate(update);
             }
         } catch (Exception e) {
-            log.error("텔레그램 폴링 오류: {}", e.getMessage());
+            // 예외 메시지에 토큰이 포함된 요청 URL 이 들어갈 수 있어 가린다
+            String message = String.valueOf(e.getMessage()).replace(botToken, "<redacted>");
+            log.error("텔레그램 폴링 오류: {}: {}", e.getClass().getSimpleName(), message);
         }
     }
 

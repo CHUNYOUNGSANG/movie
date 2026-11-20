@@ -5,8 +5,8 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
@@ -47,12 +47,49 @@ public class TelegramService implements MessageSender {
             restTemplate.postForObject(url, Map.of("commands", COMMANDS), Map.class);
             log.info("텔레그램 자동완성 메뉴 등록 완료");
         } catch (Exception e) {
-            log.error("텔레그램 자동완성 메뉴 등록 실패: {}", e.getMessage());
+            log.error("텔레그램 자동완성 메뉴 등록 실패: {}", redact(e));
         }
     }
 
     @Override
     public void sendMessage(String chatId, String text) {
+        try {
+            post(chatId, text);
+        } catch (Exception e) {
+            log.error("텔레그램 전송 실패 chatId={}: {}", chatId, redact(e));
+        }
+    }
+
+    @Override
+    public void deliver(String chatId, String text) {
+        try {
+            post(chatId, text);
+        } catch (Exception e) {
+            // 원본 예외(cause)는 붙이지 않는다: RestTemplate 예외 메시지에 토큰이 포함된 URL 이 들어 있어
+            // 스택트레이스 로깅이나 DB(last_error) 저장 시 토큰이 노출될 수 있다
+            throw new MessageSendException("알림 발송 실패 chatId=" + chatId + ": " + redact(e), null, isRetryable(e));
+        }
+    }
+
+    /** 예외 메시지에서 봇 토큰을 가린다 (요청 URL 이 메시지에 포함되는 경우가 있음) */
+    private String redact(Exception e) {
+        String message = e.getClass().getSimpleName() + ": " + e.getMessage();
+        return botToken == null || botToken.isBlank() ? message : message.replace(botToken, "<redacted>");
+    }
+
+    /**
+     * 4xx 는 요청 자체가 잘못된 것이므로 재시도해도 성공하지 않는다 (봇 차단 403, chat 없음 400 등).
+     * 단 429(Too Many Requests)는 잠시 후 성공할 수 있으므로 재시도한다.
+     * 5xx, 타임아웃 등 네트워크 오류는 일시 장애로 보고 재시도한다.
+     */
+    private static boolean isRetryable(Exception e) {
+        if (e instanceof HttpClientErrorException clientError) {
+            return clientError.getStatusCode().value() == 429;
+        }
+        return true;
+    }
+
+    private void post(String chatId, String text) {
         if (botToken.startsWith("YOUR_")) {
             log.warn("[텔레그램 미설정] chatId={}, 메시지:\n{}", chatId, text);
             return;
@@ -64,22 +101,12 @@ public class TelegramService implements MessageSender {
         body.put("text", text);
         body.put("parse_mode", "HTML");
 
-        try {
-            restTemplate.postForObject(url, body, Map.class);
-            log.info("텔레그램 전송 완료 → chatId={}", chatId);
-        } catch (Exception e) {
-            log.error("텔레그램 전송 실패 chatId={}: {}", chatId, e.getMessage());
-        }
+        restTemplate.postForObject(url, body, Map.class);
+        log.info("텔레그램 전송 완료 → chatId={}", chatId);
     }
 
-    @Async("notificationExecutor")
     @Override
-    public void sendAlerts(String chatId, List<ScreeningResult> results) {
-        if (results.isEmpty()) return;
-        sendMessage(chatId, formatAll(results));
-    }
-
-    private String formatAll(List<ScreeningResult> results) {
+    public String formatAlerts(List<ScreeningResult> results) {
         ScreeningResult first = results.get(0);
 
         StringBuilder sb = new StringBuilder();
