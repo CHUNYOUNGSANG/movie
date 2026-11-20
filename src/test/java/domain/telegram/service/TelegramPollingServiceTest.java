@@ -37,12 +37,32 @@ class TelegramPollingServiceTest {
     @Mock private UserService userService;
     @Mock private NotificationService notificationService;
     @Mock private MessageSender messageSender;
+    @Mock private TelegramOffsetStore offsetStore;
 
     private TelegramPollingService service;
 
     @BeforeEach
     void setUp() {
-        service = new TelegramPollingService(restTemplate, userService, notificationService, messageSender);
+        service = new TelegramPollingService(restTemplate, userService, notificationService, messageSender, offsetStore);
+    }
+
+    @Nested
+    @DisplayName("poll()")
+    class Poll {
+
+        @Test
+        @DisplayName("DB 에 저장된 offset 으로 getUpdates 를 요청하고, 처리한 update 다음 offset 을 저장한다")
+        void usesSharedOffset() {
+            org.springframework.test.util.ReflectionTestUtils.setField(service, "botToken", "test-token");
+            given(offsetStore.get()).willReturn(101L);
+            given(restTemplate.getForObject(contains("offset=101"), eq(Map.class))).willReturn(Map.of(
+                    "ok", true,
+                    "result", List.of(Map.of("update_id", 101))));
+
+            service.poll();
+
+            then(offsetStore).should().save(102L);
+        }
     }
 
     @Nested

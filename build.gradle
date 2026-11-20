@@ -44,6 +44,10 @@ dependencies {
     implementation 'org.flywaydb:flyway-core'
     runtimeOnly 'org.flywaydb:flyway-mysql'
 
+    // 다중 서버에서 스케줄 작업을 한 대에서만 실행 (DB 기반 분산 락)
+    implementation 'net.javacrumbs.shedlock:shedlock-spring:7.10.1'
+    implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1'
+
     // Playwright (헤드리스 브라우저 - Cloudflare 우회)
     implementation 'com.microsoft.playwright:playwright:1.45.0'
 

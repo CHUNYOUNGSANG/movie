@@ -7,6 +7,7 @@ import domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,7 +17,6 @@ import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
 
 @Slf4j
@@ -28,11 +28,11 @@ public class TelegramPollingService {
     private final UserService userService;
     private final NotificationService notificationService;
     private final MessageSender messageSender;   // DIP: 발송은 추상화에만 의존
+    private final TelegramOffsetStore offsetStore; // 서버 간 공유 offset (DB)
 
     @Value("${telegram.bot.token}")
     private String botToken;
 
-    private final AtomicLong offset = new AtomicLong(0);
 
     private static final String HELP_TEXT = """
             🎬 <b>영화 예매 알리미 사용법</b>
@@ -58,12 +58,17 @@ public class TelegramPollingService {
             📌 예매가 오픈되면 자동으로 알림을 드립니다!
             """;
 
+    /**
+     * 서버가 여러 대여도 한 대에서만 폴링한다 (같은 명령이 서버마다 중복 처리되는 것을 방지).
+     * offset 은 DB 에 저장해 공유하므로, 락을 잡는 서버가 바뀌어도 이미 처리한 명령을 다시 받지 않는다.
+     */
     @Scheduled(fixedDelay = 3000)
+    @SchedulerLock(name = "telegramPolling", lockAtMostFor = "PT30S", lockAtLeastFor = "PT2S")
     public void poll() {
         if (botToken.startsWith("YOUR_")) return;
 
         String url = "https://api.telegram.org/bot" + botToken
-                + "/getUpdates?offset=" + offset.get() + "&timeout=1";
+                + "/getUpdates?offset=" + offsetStore.get() + "&timeout=1";
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> response = restTemplate.getForObject(url, Map.class);
@@ -75,7 +80,7 @@ public class TelegramPollingService {
 
             for (Map<String, Object> update : updates) {
                 long updateId = ((Number) update.get("update_id")).longValue();
-                offset.set(updateId + 1);
+                offsetStore.save(updateId + 1);   // 처리 전에 기록 (실패한 명령은 재처리하지 않음: 기존과 동일)
                 processUpdate(update);
             }
         } catch (Exception e) {
