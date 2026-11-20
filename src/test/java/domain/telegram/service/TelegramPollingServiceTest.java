@@ -2,6 +2,7 @@ package domain.telegram.service;
 
 import domain.movie.entity.Movie;
 import domain.notification.entity.NotificationSubscription;
+import domain.notification.outbox.OutboxStatus;
 import domain.notification.service.NotificationService;
 import domain.user.entity.User;
 import domain.user.service.UserService;
@@ -152,6 +153,42 @@ class TelegramPollingServiceTest {
 
             then(messageSender).should().sendMessage(eq("111"),
                     argThat(text -> text.contains("파묘") && !text.contains("스파이더맨")));
+        }
+
+        @Test
+        @DisplayName("/history는 발송 상태를 함께 보여주고, 실패 건이 있을 때만 안내 문구를 붙인다")
+        void history_showsDeliveryStatus() {
+            User user = User.builder().chatId("111").build();
+            given(userService.findByChatId("111")).willReturn(Optional.of(user));
+            given(notificationService.findByUser(user)).willReturn(List.of(
+                    subscription(1L, "스파이더맨", true),
+                    subscription(2L, "파묘", true),
+                    subscription(3L, "위키드", true)
+            ));
+            given(notificationService.findDeliveryStatuses(List.of(1L, 2L, 3L))).willReturn(Map.of(
+                    1L, OutboxStatus.SENT, 2L, OutboxStatus.PENDING, 3L, OutboxStatus.DEAD));
+
+            service.processUpdate(update("111", "chun", "/history"));
+
+            then(messageSender).should().sendMessage(eq("111"), argThat(text ->
+                    text.contains("✅ #1 스파이더맨")
+                    && text.contains("⏳ 발송 중 #2 파묘")
+                    && text.contains("❌ 발송 실패 #3 위키드")
+                    && text.contains("직접 확인해주세요")));
+        }
+
+        @Test
+        @DisplayName("/history에 실패 건이 없으면 실패 안내 문구를 붙이지 않는다")
+        void history_noFailureHintWhenAllSent() {
+            User user = User.builder().chatId("111").build();
+            given(userService.findByChatId("111")).willReturn(Optional.of(user));
+            given(notificationService.findByUser(user)).willReturn(List.of(subscription(1L, "스파이더맨", true)));
+            given(notificationService.findDeliveryStatuses(List.of(1L))).willReturn(Map.of(1L, OutboxStatus.SENT));
+
+            service.processUpdate(update("111", "chun", "/history"));
+
+            then(messageSender).should().sendMessage(eq("111"), argThat(text ->
+                    text.contains("✅ #1 스파이더맨") && !text.contains("발송 실패")));
         }
 
         @Test
