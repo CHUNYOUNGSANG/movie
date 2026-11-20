@@ -48,7 +48,8 @@ class NotificationServiceImplTest {
         service = new NotificationServiceImpl(
                 notificationSubscriptionRepository,
                 movieService, userService, notificationStateService, outboxService,
-                List.of(cgvCrawler)
+                List.of(cgvCrawler),
+                Runnable::run   // 크롤링을 호출 스레드에서 바로 실행 (단위 테스트는 순서/상호작용만 검증)
         );
     }
 

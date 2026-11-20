@@ -5,7 +5,6 @@ import tools.jackson.databind.ObjectMapper;
 import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.RequestOptions;
 import domain.movie.dto.ScreeningResult;
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -20,6 +19,7 @@ import java.util.*;
 /**
  * Playwright 기반 CGV 크롤러.
  * 헤드리스 Chromium → Cloudflare 자동 통과 → CGV 내부 API 호출.
+ * 스레드마다 브라우저 세션을 따로 두어 여러 그룹을 동시에 크롤링할 수 있다 (crawlExecutor).
  */
 @Slf4j
 @Component
@@ -46,35 +46,54 @@ public class CgvCrawler implements MovieCrawler {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private Playwright playwright;
-    private Browser browser;
-    private BrowserContext context;
-    private boolean cfReady = false;
+    /**
+     * 크롤링 스레드마다 자기 브라우저 세션을 가진다 (Playwright 는 만든 스레드에서만 사용 가능).
+     * 처음 크롤링할 때 만들어지고, 크롤링 스레드풀의 스레드가 살아 있는 동안 재사용된다.
+     */
+    private final PerThreadResource<Session> sessions = new PerThreadResource<>(Session::open);
 
-    @PostConstruct
-    public void init() {
-        try {
-            playwright = Playwright.create();
-            browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
-                    .setHeadless(true)
-                    .setArgs(List.of("--no-sandbox", "--disable-setuid-sandbox",
-                            "--disable-dev-shm-usage", "--disable-gpu")));
-            context = browser.newContext(new Browser.NewContextOptions()
-                    .setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
-                            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"));
-            log.info("Playwright 브라우저 초기화 완료");
-        } catch (Exception e) {
-            log.error("Playwright 초기화 실패: {}", e.getMessage());
+    /** 스레드 하나가 쓰는 Playwright + 브라우저 + 컨텍스트 + Cloudflare 인증 상태 */
+    static final class Session implements AutoCloseable {
+        private final Playwright playwright;
+        private final Browser browser;
+        private final BrowserContext context;
+        private boolean cfReady = false;
+
+        private Session(Playwright playwright, Browser browser, BrowserContext context) {
+            this.playwright = playwright;
+            this.browser = browser;
+            this.context = context;
+        }
+
+        static Session open() {
+            Playwright playwright = Playwright.create();
+            try {
+                Browser browser = playwright.chromium().launch(new BrowserType.LaunchOptions()
+                        .setHeadless(true)
+                        .setArgs(List.of("--no-sandbox", "--disable-setuid-sandbox",
+                                "--disable-dev-shm-usage", "--disable-gpu")));
+                BrowserContext context = browser.newContext(new Browser.NewContextOptions()
+                        .setUserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+                                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"));
+                log.info("Playwright 브라우저 세션 생성 ({})", Thread.currentThread().getName());
+                return new Session(playwright, browser, context);
+            } catch (RuntimeException e) {
+                playwright.close();
+                throw e;
+            }
+        }
+
+        @Override
+        public void close() {
+            try { context.close(); } catch (Exception ignored) {}
+            try { browser.close(); } catch (Exception ignored) {}
+            playwright.close();
         }
     }
 
     @PreDestroy
     public void cleanup() {
-        try {
-            if (context != null) context.close();
-            if (browser != null) browser.close();
-            if (playwright != null) playwright.close();
-        } catch (Exception ignored) {}
+        sessions.closeAll();
     }
 
     @Override
@@ -86,15 +105,18 @@ public class CgvCrawler implements MovieCrawler {
     }
 
     @Override
-    public synchronized List<ScreeningResult> crawl(String movieTitle, String siteHint, LocalDate date) {
-        if (context == null) {
-            log.error("Playwright 초기화 안됨");
+    public List<ScreeningResult> crawl(String movieTitle, String siteHint, LocalDate date) {
+        Session session;
+        try {
+            session = sessions.get();
+        } catch (Exception e) {
+            log.error("Playwright 브라우저 세션 생성 실패: {}", e.getMessage());
             return List.of();
         }
         try {
-            ensureCfReady();
+            ensureCfReady(session);
 
-            Optional<String> movNo = findMovNo(movieTitle);
+            Optional<String> movNo = findMovNo(session, movieTitle);
             if (movNo.isEmpty()) {
                 log.warn("CGV: 영화를 찾을 수 없습니다 [{}]", movieTitle);
                 return List.of();
@@ -104,7 +126,7 @@ public class CgvCrawler implements MovieCrawler {
             List<ScreeningResult> results = new ArrayList<>();
 
             for (String siteNo : siteNos) {
-                results.addAll(searchSchedules(movNo.get(), siteNo, date));
+                results.addAll(searchSchedules(session, movNo.get(), siteNo, date));
             }
 
             log.info("CGV: [{}] siteHint={} {} → {}건", movieTitle, siteHint, date, results.size());
@@ -112,21 +134,21 @@ public class CgvCrawler implements MovieCrawler {
 
         } catch (Exception e) {
             log.error("CGV 크롤링 실패: {}", e.getMessage());
-            cfReady = false; // 다음 호출 시 CF 재인증
+            session.cfReady = false; // 다음 호출 시 CF 재인증
             return List.of();
         }
     }
 
     // ── CF 인증 ────────────────────────────────────────────────
 
-    private void ensureCfReady() {
-        if (cfReady) return;
+    private void ensureCfReady(Session session) {
+        if (session.cfReady) return;
         try {
-            Page page = context.newPage();
+            Page page = session.context.newPage();
             page.navigate("https://www.cgv.co.kr");
             page.waitForLoadState();
             page.close();
-            cfReady = true;
+            session.cfReady = true;
             log.info("CGV Cloudflare 인증 완료");
         } catch (Exception e) {
             log.warn("CGV CF 인증 실패 (계속 시도): {}", e.getMessage());
@@ -135,13 +157,13 @@ public class CgvCrawler implements MovieCrawler {
 
     // ── 영화 검색 ──────────────────────────────────────────────
 
-    public Optional<String> findMovNo(String movieTitle) {
+    private Optional<String> findMovNo(Session session, String movieTitle) {
         try {
             String url = BASE + "/searchAtktTopPostrList?coCd=" + CO_CD
                     + "&movNm=" + URLEncoder.encode(movieTitle, StandardCharsets.UTF_8)
                     + "&div=&attrCd=";
 
-            String body = getJson(url);
+            String body = getJson(session, url);
             if (body == null) return Optional.empty();
 
             JsonNode root = objectMapper.readTree(body);
@@ -164,7 +186,7 @@ public class CgvCrawler implements MovieCrawler {
 
     // ── 상영 스케줄 조회 ────────────────────────────────────────
 
-    private List<ScreeningResult> searchSchedules(String movNo, String siteNo, LocalDate date) {
+    private List<ScreeningResult> searchSchedules(Session session, String movNo, String siteNo, LocalDate date) {
         try {
             String url = BASE + "/searchSchByMov?coCd=" + CO_CD
                     + "&siteNo=" + siteNo
@@ -172,7 +194,7 @@ public class CgvCrawler implements MovieCrawler {
                     + "&movNo=" + movNo
                     + "&rtctlScopCd=08";
 
-            String body = getJson(url);
+            String body = getJson(session, url);
             if (body == null) return List.of();
 
             JsonNode root = objectMapper.readTree(body);
@@ -212,9 +234,9 @@ public class CgvCrawler implements MovieCrawler {
 
     // ── HTTP ──────────────────────────────────────────────────
 
-    private String getJson(String url) {
+    private String getJson(Session session, String url) {
         try {
-            APIResponse response = context.request().get(url,
+            APIResponse response = session.context.request().get(url,
                     RequestOptions.create()
                             .setHeader("Accept", "application/json")
                             .setHeader("Referer", "https://www.cgv.co.kr/"));
@@ -225,7 +247,7 @@ public class CgvCrawler implements MovieCrawler {
             return response.text();
         } catch (Exception e) {
             log.error("CGV API 호출 실패 {}: {}", url, e.getMessage());
-            cfReady = false;
+            session.cfReady = false;
             return null;
         }
     }

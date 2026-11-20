@@ -42,7 +42,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -142,7 +141,8 @@ class NotificationReliabilityTest {
         subscribe("2001", "위키드");
         subscribe("2002", "주토피아 2");
 
-        // 1주기: 첫 번째 그룹은 정상 크롤링 → 알림 발송, 두 번째 그룹 크롤링에서 예외 발생 → 전체 롤백
+        // 1주기: 한 그룹은 정상 크롤링 → 알림 발송, 다른 그룹 크롤링에서 예외 발생
+        //        (예외는 그 그룹만 건너뛰고 로그로 남긴다. 이미 처리된 그룹은 그대로 커밋)
         // 2주기: 모두 정상
         AtomicInteger calls = new AtomicInteger();
         given(crawler.crawl(anyString(), any(), any())).willAnswer(inv -> {
@@ -152,8 +152,7 @@ class NotificationReliabilityTest {
             return List.of(openScreening(inv.getArgument(0)));
         });
 
-        assertThatThrownBy(() -> notificationService.checkAndNotify())
-                .isInstanceOf(IllegalStateException.class);
+        notificationService.checkAndNotify();
         notificationService.checkAndNotify();
 
         // 비동기 발송이 모두 끝날 때까지 기다린 뒤 chatId 별 발송 횟수를 확인
