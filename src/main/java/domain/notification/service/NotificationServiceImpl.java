@@ -13,6 +13,7 @@ import domain.user.entity.User;
 import domain.user.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,10 @@ import domain.notification.outbox.NotificationOutboxService;
 import domain.notification.outbox.OutboxStatus;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CompletionService;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -36,6 +41,8 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationStateService notificationStateService;
     private final NotificationOutboxService outboxService;
     private final List<MovieCrawler> crawlers;   // OCP: 새 크롤러 추가 시 이 코드 수정 없음
+    @Qualifier("crawlExecutor")
+    private final Executor crawlExecutor;
 
     @Override
     public NotificationSubscription register(NotificationRegisterRequest req) {
@@ -109,29 +116,53 @@ public class NotificationServiceImpl implements NotificationService {
                     return s.getMovie().getMovieId() + "|" + branch + "|" + s.getTargetDate();
                 }));
 
+        // 1) 크롤링(외부 I/O)은 크롤링 전용 스레드풀에서 동시에 실행
+        CompletionService<CrawlOutcome> completion = new ExecutorCompletionService<>(crawlExecutor);
+        int submitted = 0;
         for (List<NotificationSubscription> group : groups.values()) {
             NotificationSubscription sample = group.get(0);
             String siteHint = sample.getTheater() != null ? sample.getTheater().getBranchName() : null;
             List<Long> subscriptionIds = group.stream().map(NotificationSubscription::getSubscriptionId).toList();
-            crawlers.forEach(crawler ->
-                    crawlAndMatch(crawler, sample.getMovie().getTitle(),
-                            siteHint, sample.getTargetDate(), subscriptionIds));
+            for (MovieCrawler crawler : crawlers) {
+                completion.submit(() -> crawl(crawler, sample.getMovie().getTitle(),
+                        siteHint, sample.getTargetDate(), subscriptionIds));
+                submitted++;
+            }
+        }
+
+        // 2) 저장·매칭(DB)은 끝난 순서대로 이 스레드에서 하나씩 처리
+        //    여러 스레드가 같은 극장/상영관을 동시에 새로 만들면 유니크 키 충돌이 나므로 병렬로 하지 않는다
+        for (int i = 0; i < submitted; i++) {
+            CrawlOutcome outcome = takeQuietly(completion);
+            if (outcome == null || outcome.results().isEmpty()) continue;
+            movieService.saveScreenings(outcome.results());                               // 짧은 트랜잭션
+            notificationStateService.markMatched(outcome.subscriptionIds(), outcome.results());  // 짧은 트랜잭션
         }
     }
 
     // ── private ───────────────────────────────────────────────
 
-    private void crawlAndMatch(MovieCrawler crawler, String movieTitle,
-                               String siteNo, LocalDate targetDate, List<Long> subscriptionIds) {
-        // 1) 크롤링 — 트랜잭션 없음
-        List<ScreeningResult> results = crawler.crawl(movieTitle, siteNo, targetDate);
-        log.info("[{}] {} siteNo={} {} → {}건", crawler.getCinemaName(), movieTitle, siteNo, targetDate, results.size());
-        if (results.isEmpty()) return;
+    private record CrawlOutcome(List<Long> subscriptionIds, List<ScreeningResult> results) {
+    }
 
-        // 2) 스케줄 저장 — 짧은 트랜잭션
-        movieService.saveScreenings(results);
+    /** 크롤링만 수행 (트랜잭션 없음, 크롤링 스레드에서 실행) */
+    private CrawlOutcome crawl(MovieCrawler crawler, String movieTitle,
+                               String siteHint, LocalDate targetDate, List<Long> subscriptionIds) {
+        List<ScreeningResult> results = crawler.crawl(movieTitle, siteHint, targetDate);
+        log.info("[{}] {} siteHint={} {} → {}건", crawler.getCinemaName(), movieTitle, siteHint, targetDate, results.size());
+        return new CrawlOutcome(subscriptionIds, results);
+    }
 
-        // 3) 구독 매칭 및 발송 처리 — 짧은 트랜잭션
-        notificationStateService.markMatched(subscriptionIds, results);
+    /** 크롤링 하나가 실패해도 나머지 그룹은 계속 처리한다 */
+    private static CrawlOutcome takeQuietly(CompletionService<CrawlOutcome> completion) {
+        try {
+            return completion.take().get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("크롤링 결과 대기 중 인터럽트", e);
+        } catch (ExecutionException e) {
+            log.error("크롤링 실패: {}", String.valueOf(e.getCause()));
+            return null;
+        }
     }
 }
