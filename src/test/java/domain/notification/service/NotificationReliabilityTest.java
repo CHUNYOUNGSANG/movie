@@ -22,6 +22,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import support.MySqlTestContainer;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.http.HttpStatus;
@@ -63,7 +66,6 @@ import static org.mockito.Mockito.verify;
  */
 @SpringBootTest(classes = TestApplication.class, properties = {
         // 테스트 클래스마다 독립된 DB (다른 컨텍스트의 relay 가 Outbox 를 집어가지 않도록)
-        "spring.datasource.url=jdbc:h2:mem:reliability-${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1",
         "telegram.bot.token=test-token",   // "YOUR_" 로 시작하지 않아야 발송 로직이 실행됨
         "movie.check.cron=-",              // 스케줄러 자동 실행 비활성화 (테스트에서 직접 호출)
         "notification.outbox.relay-delay-ms=200",  // 재시도 relay 주기 (테스트용으로 짧게)
@@ -72,6 +74,11 @@ import static org.mockito.Mockito.verify;
 })
 @DisplayName("알림 신뢰성 / 트랜잭션 범위 재현")
 class NotificationReliabilityTest {
+
+    @DynamicPropertySource
+    static void mysql(DynamicPropertyRegistry registry) {
+        MySqlTestContainer.registerFreshDatabase(registry);   // 테스트 클래스마다 독립된 DB
+    }
 
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;

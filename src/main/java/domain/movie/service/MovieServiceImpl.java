@@ -34,11 +34,12 @@ public class MovieServiceImpl implements MovieService {
     /**
      * 상영 슬롯(uk_schedules_slot) 기준 upsert.
      * 스케줄 PK 가 IDENTITY 라 Hibernate 는 JDBC batch insert 를 하지 못하므로 JdbcTemplate 으로 직접 배치 실행한다.
+     * 갱신 값은 MySQL 8.0.19+ 행 별칭(AS new)으로 참조한다. (VALUES() 함수는 8.0.20 부터 deprecated)
      */
     private static final String UPSERT_SCHEDULE_SQL = """
             INSERT INTO schedules (movie_id, theater_id, screen_type_id, show_date, show_time, is_opened, crawled_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE is_opened = VALUES(is_opened), crawled_at = VALUES(crawled_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?) AS new
+            ON DUPLICATE KEY UPDATE is_opened = new.is_opened, crawled_at = new.crawled_at
             """;
 
     private final MovieRepository movieRepository;
