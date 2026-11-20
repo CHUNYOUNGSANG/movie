@@ -6,7 +6,9 @@ import com.microsoft.playwright.*;
 import com.microsoft.playwright.options.RequestOptions;
 import domain.movie.dto.ScreeningResult;
 import jakarta.annotation.PreDestroy;
+import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.net.URLEncoder;
@@ -15,6 +17,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.function.Supplier;
 
 /**
  * Playwright 기반 CGV 크롤러.
@@ -50,7 +53,28 @@ public class CgvCrawler implements MovieCrawler {
      * 크롤링 스레드마다 자기 브라우저 세션을 가진다 (Playwright 는 만든 스레드에서만 사용 가능).
      * 처음 크롤링할 때 만들어지고, 크롤링 스레드풀의 스레드가 살아 있는 동안 재사용된다.
      */
-    private final PerThreadResource<Session> sessions = new PerThreadResource<>(Session::open);
+    private final PerThreadResource<Session> sessions;
+    private final MeterRegistry meterRegistry;
+
+    @Autowired
+    public CgvCrawler(MeterRegistry meterRegistry) {
+        this(meterRegistry, Session::open);
+    }
+
+    /** 테스트에서 실제 브라우저 대신 가짜 세션을 넣기 위한 생성자 */
+    CgvCrawler(MeterRegistry meterRegistry, Supplier<Session> sessionFactory) {
+        this.meterRegistry = meterRegistry;
+        this.sessions = new PerThreadResource<>(sessionFactory);
+    }
+
+    /**
+     * 지표 crawl.errors{cinema, stage, reason}: 크롤링 중 실패 횟수.
+     * 극장 일부만 실패해 결과는 돌려준 경우(부분 실패)도 여기에만 기록된다.
+     * stage: browser / cloudflare / movie_search / schedule, reason: http_403, http_502, request_failed, bad_response ...
+     */
+    private void recordError(String stage, String reason) {
+        meterRegistry.counter("crawl.errors", "cinema", getCinemaName(), "stage", stage, "reason", reason).increment();
+    }
 
     /** 스레드 하나가 쓰는 Playwright + 브라우저 + 컨텍스트 + Cloudflare 인증 상태 */
     static final class Session implements AutoCloseable {
@@ -59,7 +83,7 @@ public class CgvCrawler implements MovieCrawler {
         private final BrowserContext context;
         private boolean cfReady = false;
 
-        private Session(Playwright playwright, Browser browser, BrowserContext context) {
+        Session(Playwright playwright, Browser browser, BrowserContext context) {
             this.playwright = playwright;
             this.browser = browser;
             this.context = context;
@@ -109,14 +133,20 @@ public class CgvCrawler implements MovieCrawler {
         Session session;
         try {
             session = sessions.get();
-        } catch (Exception e) {
-            log.error("Playwright 브라우저 세션 생성 실패: {}", e.getMessage());
-            return List.of();
+        } catch (RuntimeException e) {
+            recordError("browser", "browser");
+            throw new CrawlException("browser", "Playwright 브라우저 세션 생성 실패: " + e.getMessage(), e);
         }
         try {
             ensureCfReady(session);
 
-            Optional<String> movNo = findMovNo(session, movieTitle);
+            Optional<String> movNo;
+            try {
+                movNo = findMovNo(session, movieTitle);
+            } catch (CrawlException e) {
+                recordError("movie_search", e.getReason());
+                throw e;
+            }
             if (movNo.isEmpty()) {
                 log.warn("CGV: 영화를 찾을 수 없습니다 [{}]", movieTitle);
                 return List.of();
@@ -124,18 +154,36 @@ public class CgvCrawler implements MovieCrawler {
 
             List<String> siteNos = resolveSiteNos(siteHint);
             List<ScreeningResult> results = new ArrayList<>();
+            CrawlException lastFailure = null;
+            int failed = 0;
 
             for (String siteNo : siteNos) {
-                results.addAll(searchSchedules(session, movNo.get(), siteNo, date));
+                try {
+                    results.addAll(searchSchedules(session, movNo.get(), siteNo, date));
+                } catch (CrawlException e) {
+                    // 일부 극장 실패는 나머지 결과를 살린다
+                    failed++;
+                    lastFailure = e;
+                    recordError("schedule", e.getReason());
+                    log.warn("CGV 스케줄 조회 실패 (movNo={}, siteNo={}): {}", movNo.get(), siteNo, e.getMessage());
+                }
+            }
+            if (failed == siteNos.size()) {
+                throw new CrawlException(lastFailure.getReason(),
+                        "CGV 스케줄 조회가 모든 극장(" + failed + "곳)에서 실패: " + lastFailure.getMessage(), lastFailure);
             }
 
-            log.info("CGV: [{}] siteHint={} {} → {}건", movieTitle, siteHint, date, results.size());
+            log.info("CGV: [{}] siteHint={} {} → {}건 (실패 극장 {}/{})",
+                    movieTitle, siteHint, date, results.size(), failed, siteNos.size());
             return results;
 
-        } catch (Exception e) {
-            log.error("CGV 크롤링 실패: {}", e.getMessage());
+        } catch (CrawlException e) {
             session.cfReady = false; // 다음 호출 시 CF 재인증
-            return List.of();
+            throw e;
+        } catch (RuntimeException e) {
+            session.cfReady = false;
+            recordError("unknown", "request_failed");
+            throw new CrawlException("request_failed", "CGV 크롤링 실패: " + e.getMessage(), e);
         }
     }
 
@@ -151,65 +199,58 @@ public class CgvCrawler implements MovieCrawler {
             session.cfReady = true;
             log.info("CGV Cloudflare 인증 완료");
         } catch (Exception e) {
+            recordError("cloudflare", "request_failed");
             log.warn("CGV CF 인증 실패 (계속 시도): {}", e.getMessage());
         }
     }
 
     // ── 영화 검색 ──────────────────────────────────────────────
 
+    /** 영화 번호. 검색 결과에 없으면 empty, 검색 API 호출이 실패하면 CrawlException */
     private Optional<String> findMovNo(Session session, String movieTitle) {
-        try {
-            String url = BASE + "/searchAtktTopPostrList?coCd=" + CO_CD
-                    + "&movNm=" + URLEncoder.encode(movieTitle, StandardCharsets.UTF_8)
-                    + "&div=&attrCd=";
+        String url = BASE + "/searchAtktTopPostrList?coCd=" + CO_CD
+                + "&movNm=" + URLEncoder.encode(movieTitle, StandardCharsets.UTF_8)
+                + "&div=&attrCd=";
 
-            String body = getJson(session, url);
-            if (body == null) return Optional.empty();
+        JsonNode root = readJson(getJson(session, url), url);
+        if (root.path("statusCode").asInt(-1) != 0) {
+            log.warn("CGV 영화 검색 statusCode={} [{}]", root.path("statusCode").asText(), movieTitle);
+            return Optional.empty();
+        }
 
-            JsonNode root = objectMapper.readTree(body);
-            if (root.path("statusCode").asInt(-1) != 0) return Optional.empty();
-
-            JsonNode data = root.path("data");
-            String prefix = movieTitle.substring(0, Math.min(2, movieTitle.length()));
-
-            for (JsonNode movie : data) {
-                String nm = movie.path("movNm").asText("");
-                if (nm.contains(prefix)) {
-                    return Optional.of(movie.path("movNo").asText());
-                }
+        String prefix = movieTitle.substring(0, Math.min(2, movieTitle.length()));
+        for (JsonNode movie : root.path("data")) {
+            String nm = movie.path("movNm").asText("");
+            if (nm.contains(prefix)) {
+                return Optional.of(movie.path("movNo").asText());
             }
-        } catch (Exception e) {
-            log.error("영화 검색 실패 [{}]: {}", movieTitle, e.getMessage());
         }
         return Optional.empty();
     }
 
     // ── 상영 스케줄 조회 ────────────────────────────────────────
 
+    /** 극장 한 곳의 상영 스케줄. 상영이 없으면 빈 리스트, API 호출이 실패하면 CrawlException */
     private List<ScreeningResult> searchSchedules(Session session, String movNo, String siteNo, LocalDate date) {
+        String url = BASE + "/searchSchByMov?coCd=" + CO_CD
+                + "&siteNo=" + siteNo
+                + "&scnYmd=" + date.format(YMD)
+                + "&movNo=" + movNo
+                + "&rtctlScopCd=08";
+
+        JsonNode root = readJson(getJson(session, url), url);
+        // statusCode 가 0 이 아닌 경우가 "상영 없음"인지 오류인지 확인할 수 없어 기존처럼 빈 결과로 둔다
+        if (root.path("statusCode").asInt(-1) != 0) return List.of();
+
+        List<ScreeningResult> results = new ArrayList<>();
         try {
-            String url = BASE + "/searchSchByMov?coCd=" + CO_CD
-                    + "&siteNo=" + siteNo
-                    + "&scnYmd=" + date.format(YMD)
-                    + "&movNo=" + movNo
-                    + "&rtctlScopCd=08";
-
-            String body = getJson(session, url);
-            if (body == null) return List.of();
-
-            JsonNode root = objectMapper.readTree(body);
-            if (root.path("statusCode").asInt(-1) != 0) return List.of();
-
-            List<ScreeningResult> results = new ArrayList<>();
             for (JsonNode item : root.path("data")) {
                 results.add(toResult(item));
             }
-            return results;
-
-        } catch (Exception e) {
-            log.debug("스케줄 조회 실패 (movNo={}, siteNo={}): {}", movNo, siteNo, e.getMessage());
-            return List.of();
+        } catch (RuntimeException e) {
+            throw new CrawlException("bad_response", "CGV 스케줄 응답 형식 오류 " + url + ": " + e.getMessage(), e);
         }
+        return results;
     }
 
     private ScreeningResult toResult(JsonNode item) {
@@ -234,21 +275,30 @@ public class CgvCrawler implements MovieCrawler {
 
     // ── HTTP ──────────────────────────────────────────────────
 
+    /** 응답 본문. 2xx 가 아니거나 호출 자체가 실패하면 CrawlException */
     private String getJson(Session session, String url) {
+        APIResponse response;
         try {
-            APIResponse response = session.context.request().get(url,
+            response = session.context.request().get(url,
                     RequestOptions.create()
                             .setHeader("Accept", "application/json")
                             .setHeader("Referer", "https://www.cgv.co.kr/"));
-            if (!response.ok()) {
-                log.warn("CGV API 오류 {}: {}", response.status(), url);
-                return null;
-            }
-            return response.text();
-        } catch (Exception e) {
-            log.error("CGV API 호출 실패 {}: {}", url, e.getMessage());
+        } catch (RuntimeException e) {
             session.cfReady = false;
-            return null;
+            throw new CrawlException("request_failed", "CGV API 호출 실패 " + url + ": " + e.getMessage(), e);
+        }
+        if (!response.ok()) {
+            // 403 은 대개 Cloudflare 차단
+            throw new CrawlException("http_" + response.status(), "CGV API 오류 " + response.status() + ": " + url);
+        }
+        return response.text();
+    }
+
+    private JsonNode readJson(String body, String url) {
+        try {
+            return objectMapper.readTree(body);
+        } catch (RuntimeException e) {
+            throw new CrawlException("bad_response", "CGV 응답이 JSON 이 아님 " + url + ": " + e.getMessage(), e);
         }
     }
 
