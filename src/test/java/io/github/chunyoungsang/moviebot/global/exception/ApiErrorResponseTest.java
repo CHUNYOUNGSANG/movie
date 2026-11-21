@@ -8,6 +8,7 @@ import io.github.chunyoungsang.moviebot.domain.notification.repository.Notificat
 import io.github.chunyoungsang.moviebot.domain.notification.service.NotificationService;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import io.github.chunyoungsang.moviebot.domain.user.repository.UserRepository;
+import io.github.chunyoungsang.moviebot.global.security.JwtTokenIssuer;
 import io.github.chunyoungsang.moviebot.support.MySqlTestContainer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -28,6 +29,7 @@ import java.net.http.HttpResponse;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.willThrow;
 
 /**
@@ -52,6 +54,7 @@ class ApiErrorResponseTest {
     @Autowired private MovieRepository movieRepository;
     @Autowired private NotificationSubscriptionRepository subscriptionRepository;
     @Autowired private Environment environment;
+    @Autowired private JwtTokenIssuer tokenIssuer;
 
     private final HttpClient http = HttpClient.newHttpClient();
     private Long othersSubscriptionId;
@@ -72,8 +75,8 @@ class ApiErrorResponseTest {
     @Test
     @DisplayName("가입하지 않은 사용자로 신청하면 404 USER_NOT_FOUND")
     void registerWithUnknownUser() throws Exception {
-        var response = send("POST", "/api/notifications",
-                "{\"chatId\":\"999\",\"movieTitle\":\"위키드\",\"targetDate\":\"2026-12-24\"}");
+        var response = send("POST", "/api/notifications", tokenOf("999"),
+                "{\"movieTitle\":\"위키드\",\"targetDate\":\"2026-12-24\"}");
 
         assertError(response, 404, "USER_NOT_FOUND");
     }
@@ -81,31 +84,41 @@ class ApiErrorResponseTest {
     @Test
     @DisplayName("없는 알림을 취소하면 404 SUBSCRIPTION_NOT_FOUND")
     void cancelUnknownSubscription() throws Exception {
-        assertError(send("DELETE", "/api/notifications/99999?chatId=111", null), 404, "SUBSCRIPTION_NOT_FOUND");
+        assertError(send("DELETE", "/api/notifications/99999", tokenOf("111"), null), 404, "SUBSCRIPTION_NOT_FOUND");
     }
 
     @Test
     @DisplayName("남의 알림을 취소하면 403 SUBSCRIPTION_ACCESS_DENIED, 삭제되지 않는다")
     void cancelOthersSubscription() throws Exception {
-        assertError(send("DELETE", "/api/notifications/" + othersSubscriptionId + "?chatId=111", null),
+        assertError(send("DELETE", "/api/notifications/" + othersSubscriptionId, tokenOf("111"), null),
                 403, "SUBSCRIPTION_ACCESS_DENIED");
         assertThat(subscriptionRepository.findById(othersSubscriptionId)).isPresent();
     }
 
     @Test
-    @DisplayName("요청 형식이 틀리면 400 INVALID_INPUT (번호가 숫자가 아님, 필수 파라미터 누락)")
+    @DisplayName("요청 형식이 틀리면 400 INVALID_INPUT (번호가 숫자가 아님, JSON 이 깨짐)")
     void invalidRequest() throws Exception {
-        assertError(send("DELETE", "/api/notifications/abc?chatId=111", null), 400, "INVALID_INPUT");
-        assertError(send("DELETE", "/api/notifications/1", null), 400, "INVALID_INPUT");
+        assertError(send("DELETE", "/api/notifications/abc", tokenOf("111"), null), 400, "INVALID_INPUT");
+        assertError(send("POST", "/api/notifications", tokenOf("111"), "{\"movieTitle\":"), 400, "INVALID_INPUT");
+    }
+
+    @Test
+    @DisplayName("토큰이 없거나 틀리면 401 UNAUTHORIZED (같은 오류 형식, 실패 이유는 싣지 않음)")
+    void unauthorized() throws Exception {
+        assertError(send("GET", "/api/notifications", null, null), 401, "UNAUTHORIZED");
+
+        var forged = send("GET", "/api/notifications", tokenOf("111") + "x", null);
+        assertError(forged, 401, "UNAUTHORIZED");
+        assertThat(forged.headers().firstValue("WWW-Authenticate")).hasValueSatisfying(h -> assertThat(h).startsWith("Bearer"));
     }
 
     @Test
     @DisplayName("예상하지 못한 오류는 500 INTERNAL_ERROR, 내부 메시지를 응답에 싣지 않는다")
     void unexpectedErrorHidesDetails() throws Exception {
         willThrow(new IllegalArgumentException("내부 상세: jdbc:mysql://db:3306/moviebot"))
-                .given(notificationService).findAll();
+                .given(notificationService).findByChatId(anyString());
 
-        var response = send("GET", "/api/notifications", null);
+        var response = send("GET", "/api/notifications", tokenOf("111"), null);
 
         assertError(response, 500, "INTERNAL_ERROR");
         assertThat(response.body()).doesNotContain("jdbc:mysql");
@@ -120,11 +133,16 @@ class ApiErrorResponseTest {
         assertThat(response.body()).contains("\"code\":\"" + code + "\"").contains("\"message\":");
     }
 
-    private HttpResponse<String> send(String method, String path, String json) throws Exception {
+    private String tokenOf(String chatId) {
+        return tokenIssuer.issue(chatId).accessToken();
+    }
+
+    private HttpResponse<String> send(String method, String path, String token, String json) throws Exception {
         String port = environment.getProperty("local.server.port");
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
                 .method(method, json == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(json));
         if (json != null) builder.header("Content-Type", "application/json");
+        if (token != null) builder.header("Authorization", "Bearer " + token);
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
 }
