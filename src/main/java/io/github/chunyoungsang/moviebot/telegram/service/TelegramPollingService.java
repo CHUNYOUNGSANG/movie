@@ -11,7 +11,6 @@ import org.springframework.beans.factory.annotation.Value;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
@@ -92,7 +91,11 @@ public class TelegramPollingService {
         }
     }
 
-    @Transactional
+    /**
+     * 트랜잭션을 걸지 않는다: 명령마다 서비스의 짧은 트랜잭션을 쓰고, 텔레그램 답장(외부 I/O)은 트랜잭션 밖에서 보낸다.
+     * (예전의 @Transactional 은 poll() 에서 내부 호출되어 운영에서는 적용되지 않았고,
+     *  테스트처럼 프록시로 호출될 때만 적용되어 답장을 보내는 동안 DB 커넥션을 쥐고 있었다)
+     */
     public void processUpdate(Map<String, Object> update) {
         @SuppressWarnings("unchecked")
         Map<String, Object> message = (Map<String, Object>) update.get("message");
