@@ -28,7 +28,6 @@ import java.util.Optional;
 @Transactional
 public class OutboxService {
 
-    private static final int ERROR_MAX_LENGTH = 500;
 
     private final NotificationOutboxRepository outboxRepository;
     private final NotificationHistoryRepository historyRepository;
@@ -37,12 +36,7 @@ public class OutboxService {
 
     /** 매칭 트랜잭션 안에서 호출된다 (구독 상태 변경과 함께 커밋/롤백). */
     public NotificationOutbox enqueue(NotificationSubscription sub, String message) {
-        return outboxRepository.save(NotificationOutbox.builder()
-                .subscription(sub)
-                .chatId(sub.getUser().getChatId())
-                .message(message)
-                .nextAttemptAt(LocalDateTime.now())
-                .build());
+        return outboxRepository.save(NotificationOutbox.create(sub, message, LocalDateTime.now()));
     }
 
     /** 발송 선점. 다른 쪽이 이미 집었거나 아직 차례가 아니면 empty. */
@@ -56,9 +50,7 @@ public class OutboxService {
 
     public void markSent(Long outboxId) {
         NotificationOutbox outbox = outboxRepository.findById(outboxId).orElseThrow();
-        outbox.setStatus(OutboxStatus.SENT);
-        outbox.setAttemptCount(outbox.getAttemptCount() + 1);
-        outbox.setLockedAt(null);
+        outbox.markSent();
         historyRepository.save(NotificationHistory.builder()
                 .subscription(outbox.getSubscription()).status("SUCCESS").build());
     }
@@ -72,16 +64,12 @@ public class OutboxService {
         NotificationOutbox outbox = outboxRepository.findById(outboxId).orElseThrow();
         RetryPolicy.Decision decision = retryPolicy.decide(outbox.getAttemptCount(), cause, LocalDateTime.now());
 
-        outbox.setAttemptCount(decision.attempts());
-        outbox.setLastError(truncate(cause.getMessage()));
-        outbox.setLockedAt(null);
         if (decision.isDead()) {
-            outbox.setStatus(OutboxStatus.DEAD);
+            outbox.giveUp(decision.attempts(), cause.getMessage());
             historyRepository.save(NotificationHistory.builder()
                     .subscription(outbox.getSubscription()).status("FAIL").build());
         } else {
-            outbox.setStatus(OutboxStatus.PENDING);
-            outbox.setNextAttemptAt(decision.nextAttemptAt());
+            outbox.scheduleRetry(decision.attempts(), decision.nextAttemptAt(), cause.getMessage());
         }
         return decision.result();
     }
@@ -106,10 +94,6 @@ public class OutboxService {
         return outboxRepository.releaseStale(LocalDateTime.now().minus(properties.staleLock()));
     }
 
-    private static String truncate(String s) {
-        if (s == null) return null;
-        return s.length() <= ERROR_MAX_LENGTH ? s : s.substring(0, ERROR_MAX_LENGTH);
-    }
 
     /** 발송에 필요한 값만 담은 스냅샷 (트랜잭션 밖으로 엔티티를 넘기지 않기 위함) */
     public record OutboxMessage(Long outboxId, String chatId, String message) {

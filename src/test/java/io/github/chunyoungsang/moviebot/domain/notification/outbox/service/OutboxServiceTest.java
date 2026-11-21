@@ -40,14 +40,20 @@ class OutboxServiceTest {
     void setUp() {
         OutboxProperties properties = new OutboxProperties(30_000, Duration.ofHours(1), 3, 10_000, 50, Duration.ofMinutes(5));
         service = new OutboxService(outboxRepository, historyRepository, properties, new RetryPolicy(properties));
-        outbox = NotificationOutbox.builder()
+        outbox = sendingOutbox(0);
+        lenient().when(outboxRepository.findById(1L)).thenAnswer(inv -> Optional.of(outbox));
+    }
+
+    /** 리스너/relay 가 선점해 발송 중인 Outbox */
+    private static NotificationOutbox sendingOutbox(int attemptCount) {
+        return NotificationOutbox.builder()
                 .outboxId(1L)
                 .subscription(NotificationSubscription.builder().subscriptionId(10L).build())
                 .chatId("123").message("본문")
                 .status(OutboxStatus.SENDING)
+                .attemptCount(attemptCount)
                 .nextAttemptAt(LocalDateTime.now())
                 .build();
-        lenient().when(outboxRepository.findById(1L)).thenReturn(Optional.of(outbox));
     }
 
     @Test
@@ -67,7 +73,7 @@ class OutboxServiceTest {
     @Test
     @DisplayName("최대 시도 횟수에 도달하면 DEAD + FAIL 이력")
     void exhaustedRetriesGoToDead() {
-        outbox.setAttemptCount(2);   // 이번이 3번째 시도
+        outbox = sendingOutbox(2);   // 이번이 3번째 시도
 
         DeliveryResult result = service.markFailed(1L, new MessageSendException("502", null, true));
 
@@ -89,7 +95,7 @@ class OutboxServiceTest {
     @Test
     @DisplayName("속도 제한(429)이면 시도 횟수를 쓰지 않고 retry_after 뒤로 미룬다 (최대 횟수 직전이어도 DEAD 아님)")
     void rateLimitedDoesNotConsumeAttempt() {
-        outbox.setAttemptCount(2);   // 일반 실패였다면 이번에 DEAD
+        outbox = sendingOutbox(2);   // 일반 실패였다면 이번에 DEAD
         LocalDateTime before = LocalDateTime.now();
 
         DeliveryResult result = service.markFailed(1L, new MessageSendException("429", null, true, Duration.ofSeconds(5)));
