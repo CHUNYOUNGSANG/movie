@@ -2,6 +2,7 @@ package io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch;
 
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch.NotificationDispatcher;
 import lombok.RequiredArgsConstructor;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxEnqueuedEvent;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;

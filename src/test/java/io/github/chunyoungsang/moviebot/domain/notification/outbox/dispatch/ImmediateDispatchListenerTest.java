@@ -1,6 +1,6 @@
 package io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch;
 
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch.NotificationDispatcher;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxEnqueuedEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

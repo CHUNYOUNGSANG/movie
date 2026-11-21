@@ -9,6 +9,7 @@ import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationS
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationHistoryRepository;
 import lombok.RequiredArgsConstructor;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.config.OutboxProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,10 +34,16 @@ public class OutboxService {
     private final NotificationHistoryRepository historyRepository;
     private final OutboxProperties properties;
     private final RetryPolicy retryPolicy;
+    private final ApplicationEventPublisher eventPublisher;
 
-    /** 매칭 트랜잭션 안에서 호출된다 (구독 상태 변경과 함께 커밋/롤백). */
-    public NotificationOutbox enqueue(NotificationSubscription sub, String message) {
-        return outboxRepository.save(NotificationOutbox.create(sub, message, LocalDateTime.now()));
+    /**
+     * 보낼 알림을 기록하고, 커밋 이후 즉시 발송되도록 이벤트를 발행한다.
+     * 호출한 쪽의 트랜잭션(구독 상태 변경)에 합류해 함께 커밋/롤백된다 (Transactional Outbox).
+     * 즉시 발송이 실패하거나 실행되지 못해도 Outbox 에 남아 있으므로 relay 가 발송한다.
+     */
+    public void enqueue(NotificationSubscription sub, String message) {
+        NotificationOutbox outbox = outboxRepository.save(NotificationOutbox.create(sub, message, LocalDateTime.now()));
+        eventPublisher.publishEvent(new OutboxEnqueuedEvent(outbox.getOutboxId()));
     }
 
     /** 발송 선점. 다른 쪽이 이미 집었거나 아직 차례가 아니면 empty. */
