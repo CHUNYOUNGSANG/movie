@@ -6,7 +6,7 @@ import io.github.chunyoungsang.moviebot.movie.entity.Theater;
 import io.github.chunyoungsang.moviebot.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.notification.outbox.NotificationOutbox;
 import io.github.chunyoungsang.moviebot.notification.outbox.NotificationOutboxService;
-import io.github.chunyoungsang.moviebot.telegram.service.MessageSender;
+import io.github.chunyoungsang.moviebot.notification.sender.AlertMessageFormatter;
 import io.github.chunyoungsang.moviebot.notification.repository.NotificationSubscriptionRepository;
 import io.github.chunyoungsang.moviebot.notification.event.NotificationMatchedEvent;
 import io.github.chunyoungsang.moviebot.user.entity.User;
@@ -36,14 +36,14 @@ class NotificationStateServiceTest {
 
     @Mock private NotificationSubscriptionRepository subscriptionRepository;
     @Mock private NotificationOutboxService outboxService;
-    @Mock private MessageSender messageSender;
+    @Mock private AlertMessageFormatter alertMessageFormatter;
     @Mock private ApplicationEventPublisher eventPublisher;
 
     private NotificationStateService service;
 
     @BeforeEach
     void setUp() {
-        service = new NotificationStateService(subscriptionRepository, outboxService, messageSender, eventPublisher);
+        service = new NotificationStateService(subscriptionRepository, outboxService, alertMessageFormatter, eventPublisher);
     }
 
     @Nested
@@ -57,7 +57,7 @@ class NotificationStateServiceTest {
             given(subscriptionRepository.findAllBySubscriptionIdIn(List.of(1L))).willReturn(List.of(sub));
 
             given(subscriptionRepository.claimTriggered(1L)).willReturn(1);
-            given(messageSender.formatAlerts(any())).willReturn("알림 본문");
+            given(alertMessageFormatter.format(any())).willReturn("알림 본문");
             given(outboxService.enqueue(sub, "알림 본문"))
                     .willReturn(NotificationOutbox.builder().outboxId(10L).build());
 

@@ -1,8 +1,8 @@
 package io.github.chunyoungsang.moviebot.notification.outbox;
 
 import io.github.chunyoungsang.moviebot.notification.outbox.NotificationOutboxService.OutboxMessage;
-import io.github.chunyoungsang.moviebot.telegram.service.MessageSendException;
-import io.github.chunyoungsang.moviebot.telegram.service.MessageSender;
+import io.github.chunyoungsang.moviebot.notification.sender.MessageSendException;
+import io.github.chunyoungsang.moviebot.notification.sender.MessageSender;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.DisplayName;

@@ -2,7 +2,7 @@ package io.github.chunyoungsang.moviebot.notification.outbox;
 
 import io.github.chunyoungsang.moviebot.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.notification.repository.NotificationHistoryRepository;
-import io.github.chunyoungsang.moviebot.telegram.service.MessageSendException;
+import io.github.chunyoungsang.moviebot.notification.sender.MessageSendException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

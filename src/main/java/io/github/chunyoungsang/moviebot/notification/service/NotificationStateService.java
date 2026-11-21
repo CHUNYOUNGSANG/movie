@@ -6,7 +6,7 @@ import io.github.chunyoungsang.moviebot.notification.entity.NotificationSubscrip
 import io.github.chunyoungsang.moviebot.notification.outbox.NotificationOutbox;
 import io.github.chunyoungsang.moviebot.notification.outbox.NotificationOutboxService;
 import io.github.chunyoungsang.moviebot.notification.repository.NotificationSubscriptionRepository;
-import io.github.chunyoungsang.moviebot.telegram.service.MessageSender;
+import io.github.chunyoungsang.moviebot.notification.sender.AlertMessageFormatter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -25,7 +25,7 @@ public class NotificationStateService {
 
     private final NotificationSubscriptionRepository subscriptionRepository;
     private final NotificationOutboxService outboxService;
-    private final MessageSender messageSender;
+    private final AlertMessageFormatter alertMessageFormatter;
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -57,7 +57,7 @@ public class NotificationStateService {
             if (subscriptionRepository.claimTriggered(sub.getSubscriptionId()) == 0) continue;
 
             // 구독 상태 변경과 "보낼 메시지" 기록을 같은 트랜잭션으로 커밋 (Transactional Outbox)
-            NotificationOutbox outbox = outboxService.enqueue(sub, messageSender.formatAlerts(matched));
+            NotificationOutbox outbox = outboxService.enqueue(sub, alertMessageFormatter.format(matched));
             // 커밋 이후 즉시 발송 시도 (실패/누락 시 relay 가 재시도)
             eventPublisher.publishEvent(new NotificationMatchedEvent(outbox.getOutboxId()));
         }
