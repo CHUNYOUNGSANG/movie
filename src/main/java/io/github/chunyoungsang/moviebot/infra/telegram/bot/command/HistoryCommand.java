@@ -1,7 +1,7 @@
 package io.github.chunyoungsang.moviebot.infra.telegram.bot.command;
 
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.DeliveryStatus;
 import io.github.chunyoungsang.moviebot.domain.notification.service.NotificationService;
 import io.github.chunyoungsang.moviebot.infra.telegram.client.TelegramClient;
 import io.github.chunyoungsang.moviebot.domain.user.service.UserService;
@@ -35,20 +35,19 @@ public class HistoryCommand extends SubscriptionListCommand {
 
     @Override
     protected String render(List<NotificationSubscription> subscriptions) {
-        Map<Long, OutboxStatus> statuses = notificationService.findDeliveryStatuses(
+        Map<Long, DeliveryStatus> statuses = notificationService.findDeliveryStatuses(
                 subscriptions.stream().map(NotificationSubscription::getSubscriptionId).toList());
-        boolean anyFailed = statuses.containsValue(OutboxStatus.DEAD);
+        boolean anyFailed = statuses.containsValue(DeliveryStatus.FAILED);
         return "📜 <b>알림 기록</b>\n\n"
                 + lines(subscriptions, sub -> deliveryLabel(statuses.get(sub.getSubscriptionId())))
                 + (anyFailed ? "\n❌ 발송 실패: 텔레그램 전송에 끝내 실패한 알림이에요. 예매 오픈 여부를 직접 확인해주세요." : "");
     }
 
-    private static String deliveryLabel(OutboxStatus status) {
-        if (status == null) return "✅ ";   // Outbox 도입 전에 발송된 알림
+    private static String deliveryLabel(DeliveryStatus status) {
         return switch (status) {
-            case SENT -> "✅ ";
-            case PENDING, SENDING -> "⏳ 발송 중 ";
-            case DEAD -> "❌ 발송 실패 ";
+            case DELIVERED -> "✅ ";
+            case IN_PROGRESS -> "⏳ 발송 중 ";
+            case FAILED -> "❌ 발송 실패 ";
         };
     }
 }

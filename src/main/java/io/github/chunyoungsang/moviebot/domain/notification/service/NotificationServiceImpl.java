@@ -10,7 +10,7 @@ import io.github.chunyoungsang.moviebot.domain.movie.service.MovieService;
 import io.github.chunyoungsang.moviebot.domain.notification.dto.NotificationRegisterRequest;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.DeliveryStatus;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationSubscriptionRepository;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import io.github.chunyoungsang.moviebot.domain.user.service.UserService;
@@ -70,8 +70,8 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional(readOnly = true)
-    public Map<Long, OutboxStatus> findDeliveryStatuses(List<Long> subscriptionIds) {
-        return outboxService.findLatestStatuses(subscriptionIds);
+    public Map<Long, DeliveryStatus> findDeliveryStatuses(List<Long> subscriptionIds) {
+        return outboxService.findDeliveryStatuses(subscriptionIds);
     }
 
     @Override

@@ -79,6 +79,34 @@ class OutboxServiceTest {
     }
 
     @Test
+    @DisplayName("발송 상태: 내부 상태를 공개용 3가지로, Outbox 가 없는 구독(도입 전 발송분)은 DELIVERED")
+    void deliveryStatuses() {
+        given(outboxRepository.findStatusesBySubscriptionIds(java.util.List.of(1L, 2L, 3L, 4L, 5L))).willReturn(java.util.List.of(
+                view(1L, OutboxStatus.SENT), view(2L, OutboxStatus.PENDING),
+                view(3L, OutboxStatus.SENDING), view(4L, OutboxStatus.DEAD)));
+
+        assertThat(service.findDeliveryStatuses(java.util.List.of(1L, 2L, 3L, 4L, 5L))).containsExactlyInAnyOrderEntriesOf(java.util.Map.of(
+                1L, DeliveryStatus.DELIVERED, 2L, DeliveryStatus.IN_PROGRESS, 3L, DeliveryStatus.IN_PROGRESS,
+                4L, DeliveryStatus.FAILED, 5L, DeliveryStatus.DELIVERED));
+    }
+
+    @Test
+    @DisplayName("발송 상태: 같은 구독에 Outbox 가 여러 건이면 마지막(최신) 것 기준")
+    void deliveryStatusUsesLatest() {
+        given(outboxRepository.findStatusesBySubscriptionIds(java.util.List.of(1L))).willReturn(java.util.List.of(
+                view(1L, OutboxStatus.DEAD), view(1L, OutboxStatus.SENT)));
+
+        assertThat(service.findDeliveryStatuses(java.util.List.of(1L))).containsEntry(1L, DeliveryStatus.DELIVERED);
+    }
+
+    private static NotificationOutboxRepository.DeliveryStatusView view(Long subscriptionId, OutboxStatus status) {
+        return new NotificationOutboxRepository.DeliveryStatusView() {
+            @Override public Long getSubscriptionId() { return subscriptionId; }
+            @Override public OutboxStatus getStatus() { return status; }
+        };
+    }
+
+    @Test
     @DisplayName("일시 장애면 시도 횟수를 늘리고 백오프 후 다시 PENDING")
     void retryableFailureGoesBackToPending() {
         LocalDateTime before = LocalDateTime.now();
