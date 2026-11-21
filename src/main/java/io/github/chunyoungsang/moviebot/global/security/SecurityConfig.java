@@ -1,7 +1,10 @@
 package io.github.chunyoungsang.moviebot.global.security;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import io.github.chunyoungsang.moviebot.global.exception.BusinessException;
+import io.github.chunyoungsang.moviebot.global.exception.CommonErrorCode;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,7 +18,10 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -34,18 +40,35 @@ import java.security.SecureRandom;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain apiSecurity(HttpSecurity http) throws Exception {
+    public SecurityFilterChain apiSecurity(HttpSecurity http,
+                                           @Qualifier("handlerExceptionResolver") HandlerExceptionResolver resolver) throws Exception {
+        AuthenticationEntryPoint unauthorized = jsonUnauthorized(resolver);
         http.securityMatcher("/api/**")
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/api/auth/**").permitAll()
-                        .requestMatchers("/api/notifications/**").permitAll()   // 다음 단계에서 인증 필요로 전환
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(Customizer.withDefaults())
+                        .authenticationEntryPoint(unauthorized))   // 토큰이 틀렸거나 만료
+                .exceptionHandling(e -> e.authenticationEntryPoint(unauthorized))   // 토큰이 없음
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .csrf(AbstractHttpConfigurer::disable)
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable);
         return http.build();
+    }
+
+    /**
+     * 401 응답도 다른 API 오류와 같은 {code, message} 형식으로 (GlobalExceptionHandler 에 맡긴다).
+     * WWW-Authenticate 헤더는 표준 Bearer 진입점이 채운다. 실패 이유(서명 불일치, 만료)는 응답에 싣지 않는다
+     */
+    private static AuthenticationEntryPoint jsonUnauthorized(HandlerExceptionResolver resolver) {
+        BearerTokenAuthenticationEntryPoint bearer = new BearerTokenAuthenticationEntryPoint();
+        return (request, response, authException) -> {
+            bearer.commence(request, response, authException);
+            resolver.resolveException(request, response, null,
+                    new BusinessException(CommonErrorCode.UNAUTHORIZED, authException.getMessage()));
+        };
     }
 
     @Bean
