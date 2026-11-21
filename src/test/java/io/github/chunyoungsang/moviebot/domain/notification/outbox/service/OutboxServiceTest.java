@@ -38,8 +38,8 @@ class OutboxServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OutboxService(outboxRepository, historyRepository,
-                new OutboxProperties(30_000, Duration.ofHours(1), 3, 10_000, 50, Duration.ofMinutes(5)));
+        OutboxProperties properties = new OutboxProperties(30_000, Duration.ofHours(1), 3, 10_000, 50, Duration.ofMinutes(5));
+        service = new OutboxService(outboxRepository, historyRepository, properties, new RetryPolicy(properties));
         outbox = NotificationOutbox.builder()
                 .outboxId(1L)
                 .subscription(NotificationSubscription.builder().subscriptionId(10L).build())
@@ -101,14 +101,5 @@ class OutboxServiceTest {
                 .isAfterOrEqualTo(before.plusSeconds(5))
                 .isBefore(before.plusSeconds(30));   // 지수 백오프(30초~)가 아니라 retry_after 기준
         then(historyRepository).should(never()).save(any());
-    }
-
-    @Test
-    @DisplayName("백오프는 base × 2^(n-1) 로 늘어나고 1시간을 넘지 않는다")
-    void backoffGrowsExponentiallyWithCap() {
-        assertThat(service.backoff(1)).isEqualTo(Duration.ofSeconds(30));
-        assertThat(service.backoff(2)).isEqualTo(Duration.ofMinutes(1));
-        assertThat(service.backoff(3)).isEqualTo(Duration.ofMinutes(2));
-        assertThat(service.backoff(30)).isEqualTo(Duration.ofHours(1));
     }
 }

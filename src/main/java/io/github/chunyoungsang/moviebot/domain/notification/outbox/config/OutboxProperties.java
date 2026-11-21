@@ -29,9 +29,4 @@ public record OutboxProperties(
         if (maxAttempts < 1) throw new IllegalArgumentException("notification.outbox.max-attempts 는 1 이상이어야 합니다");
         if (relayBatchSize < 1) throw new IllegalArgumentException("notification.outbox.relay-batch-size 는 1 이상이어야 합니다");
     }
-
-    /** 테스트용 기본값 */
-    public static OutboxProperties defaults() {
-        return new OutboxProperties(30_000, Duration.ofHours(1), 5, 10_000, 50, Duration.ofMinutes(5));
-    }
 }
