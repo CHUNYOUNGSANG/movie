@@ -1,4 +1,4 @@
-package io.github.chunyoungsang.moviebot.telegram.service;
+package io.github.chunyoungsang.moviebot.telegram.bot;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;

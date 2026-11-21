@@ -1,4 +1,4 @@
-package io.github.chunyoungsang.moviebot.telegram.service;
+package io.github.chunyoungsang.moviebot.telegram.client;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

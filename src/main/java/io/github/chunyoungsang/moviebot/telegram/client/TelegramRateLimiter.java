@@ -1,4 +1,4 @@
-package io.github.chunyoungsang.moviebot.telegram.service;
+package io.github.chunyoungsang.moviebot.telegram.client;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
