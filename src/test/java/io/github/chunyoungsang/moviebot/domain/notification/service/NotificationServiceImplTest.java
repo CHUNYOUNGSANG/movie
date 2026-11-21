@@ -1,5 +1,9 @@
 package io.github.chunyoungsang.moviebot.domain.notification.service;
 
+import io.github.chunyoungsang.moviebot.global.exception.BusinessException;
+import io.github.chunyoungsang.moviebot.domain.notification.exception.NotificationErrorCode;
+import io.github.chunyoungsang.moviebot.domain.user.exception.UserErrorCode;
+
 import io.github.chunyoungsang.moviebot.domain.movie.crawler.CrawlException;
 import io.github.chunyoungsang.moviebot.domain.movie.crawler.MovieCrawler;
 import io.github.chunyoungsang.moviebot.domain.movie.dto.ScreeningResult;
@@ -58,11 +62,12 @@ class NotificationServiceImplTest {
         @DisplayName("존재하지 않는 chatId 이면 예외를 던진다")
         void throwsWhenUserNotFound() {
             given(userService.getByChatIdOrThrow("unknown"))
-                    .willThrow(new IllegalArgumentException("등록된 사용자가 없습니다. /start 를 먼저 입력하세요."));
+                    .willThrow(new BusinessException(UserErrorCode.USER_NOT_FOUND));
 
             assertThatThrownBy(() -> service.register(new NotificationRegisterRequest(
                     "unknown", "스파이더맨", "CGV", "영등포", "IMAX", LocalDate.now()
-            ))).isInstanceOf(IllegalArgumentException.class);
+            ))).isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode()).isEqualTo(UserErrorCode.USER_NOT_FOUND);
         }
 
         @Test
@@ -93,7 +98,8 @@ class NotificationServiceImplTest {
             given(notificationSubscriptionRepository.findById(1L)).willReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.cancel(1L, "123"))
-                    .isInstanceOf(IllegalArgumentException.class);
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode()).isEqualTo(NotificationErrorCode.SUBSCRIPTION_NOT_FOUND);
         }
 
         @Test
@@ -104,7 +110,8 @@ class NotificationServiceImplTest {
             given(notificationSubscriptionRepository.findById(1L)).willReturn(Optional.of(sub));
 
             assertThatThrownBy(() -> service.cancel(1L, "다른사람"))
-                    .isInstanceOf(SecurityException.class);
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode()).isEqualTo(NotificationErrorCode.SUBSCRIPTION_ACCESS_DENIED);
 
             then(notificationSubscriptionRepository).should(never()).delete(any());
         }

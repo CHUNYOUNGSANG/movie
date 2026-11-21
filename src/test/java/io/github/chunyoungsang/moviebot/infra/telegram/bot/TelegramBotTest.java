@@ -1,5 +1,9 @@
 package io.github.chunyoungsang.moviebot.infra.telegram.bot;
 
+import io.github.chunyoungsang.moviebot.global.exception.BusinessException;
+import io.github.chunyoungsang.moviebot.domain.notification.exception.NotificationErrorCode;
+import io.github.chunyoungsang.moviebot.domain.user.exception.UserErrorCode;
+
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Movie;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus;
@@ -245,6 +249,16 @@ class TelegramBotTest {
             then(notificationService).should().register(any());
             then(messageSender).should().sendMessage(eq("111"), contains("알림 신청 완료"));
         }
+
+        @Test
+        @DisplayName("가입 전 사용자면 /start 를 안내한다")
+        void unknownUser_guidesToStart() {
+            given(notificationService.register(any())).willThrow(new BusinessException(UserErrorCode.USER_NOT_FOUND));
+
+            service.processUpdate(update("999", "new", "/add 스파이더맨 2026-09-04"));
+
+            then(messageSender).should().sendMessage("999", "❌ 등록된 사용자가 없습니다. /start 를 먼저 입력하세요.");
+        }
     }
 
     @Nested
@@ -260,14 +274,25 @@ class TelegramBotTest {
         }
 
         @Test
-        @DisplayName("본인 소유가 아니면 SecurityException 메시지를 그대로 보여준다")
+        @DisplayName("본인 소유가 아니면 오류 코드의 메시지를 보여준다")
         void notOwner_sendsForbiddenMessage() {
-            willThrow(new SecurityException("본인이 신청한 알림만 취소할 수 있습니다."))
+            willThrow(new BusinessException(NotificationErrorCode.SUBSCRIPTION_ACCESS_DENIED, "id=1"))
                     .given(notificationService).cancel(1L, "111");
 
             service.processUpdate(update("111", "chun", "/cancel 1"));
 
-            then(messageSender).should().sendMessage(eq("111"), contains("본인이 신청한"));
+            then(messageSender).should().sendMessage("111", "❌ 본인이 신청한 알림만 취소할 수 있습니다.");
+        }
+
+        @Test
+        @DisplayName("없는 번호면 목록을 확인하라고 안내한다")
+        void notFound_guidesToList() {
+            willThrow(new BusinessException(NotificationErrorCode.SUBSCRIPTION_NOT_FOUND, "id=9"))
+                    .given(notificationService).cancel(9L, "111");
+
+            service.processUpdate(update("111", "chun", "/cancel 9"));
+
+            then(messageSender).should().sendMessage(eq("111"), contains("해당 번호의 알림을 찾을 수 없습니다"));
         }
 
         @Test

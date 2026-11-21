@@ -1,5 +1,8 @@
 package io.github.chunyoungsang.moviebot.domain.notification.service;
 
+import io.github.chunyoungsang.moviebot.domain.notification.exception.NotificationErrorCode;
+import io.github.chunyoungsang.moviebot.global.exception.BusinessException;
+
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Movie;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.ScreenType;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Theater;
@@ -74,9 +77,9 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     public void cancel(Long subscriptionId, String chatId) {
         NotificationSubscription sub = notificationSubscriptionRepository.findById(subscriptionId)
-                .orElseThrow(() -> new IllegalArgumentException("알림 신청을 찾을 수 없습니다: " + subscriptionId));
+                .orElseThrow(() -> new BusinessException(NotificationErrorCode.SUBSCRIPTION_NOT_FOUND, "id=" + subscriptionId));
         if (!sub.getUser().getChatId().equals(chatId)) {
-            throw new SecurityException("본인이 신청한 알림만 취소할 수 있습니다.");
+            throw new BusinessException(NotificationErrorCode.SUBSCRIPTION_ACCESS_DENIED, "id=" + subscriptionId);
         }
         notificationSubscriptionRepository.delete(sub);
     }

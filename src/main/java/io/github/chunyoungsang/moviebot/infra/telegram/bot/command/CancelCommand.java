@@ -1,5 +1,8 @@
 package io.github.chunyoungsang.moviebot.infra.telegram.bot.command;
 
+import io.github.chunyoungsang.moviebot.domain.notification.exception.NotificationErrorCode;
+import io.github.chunyoungsang.moviebot.global.exception.BusinessException;
+
 import io.github.chunyoungsang.moviebot.domain.notification.service.NotificationService;
 import io.github.chunyoungsang.moviebot.infra.telegram.bot.BotCommand;
 import io.github.chunyoungsang.moviebot.infra.telegram.bot.BotMessage;
@@ -36,11 +39,10 @@ public class CancelCommand implements BotCommand {
         } catch (NumberFormatException e) {
             telegramClient.sendMessage(chatId,
                     "❌ 번호가 올바르지 않습니다.\n예시: /cancel 1\n\n목록 확인: /list");
-        } catch (IllegalArgumentException e) {
-            telegramClient.sendMessage(chatId,
-                    "❌ 해당 번호의 알림을 찾을 수 없습니다.\n현재 목록을 확인해주세요: /list");
-        } catch (SecurityException e) {
-            telegramClient.sendMessage(chatId, "❌ " + e.getMessage());
+        } catch (BusinessException e) {
+            telegramClient.sendMessage(chatId, e.getErrorCode() == NotificationErrorCode.SUBSCRIPTION_NOT_FOUND
+                    ? "❌ 해당 번호의 알림을 찾을 수 없습니다.\n현재 목록을 확인해주세요: /list"
+                    : "❌ " + e.getErrorCode().message());
         }
     }
 }

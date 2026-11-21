@@ -1,5 +1,8 @@
 package io.github.chunyoungsang.moviebot.domain.user.service;
 
+import io.github.chunyoungsang.moviebot.global.exception.BusinessException;
+import io.github.chunyoungsang.moviebot.domain.user.exception.UserErrorCode;
+
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import io.github.chunyoungsang.moviebot.domain.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,7 +54,8 @@ class UserServiceImplTest {
             given(userRepository.findByChatId("unknown")).willReturn(Optional.empty());
 
             assertThatThrownBy(() -> service.getByChatIdOrThrow("unknown"))
-                    .isInstanceOf(IllegalArgumentException.class);
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode()).isEqualTo(UserErrorCode.USER_NOT_FOUND);
         }
     }
 

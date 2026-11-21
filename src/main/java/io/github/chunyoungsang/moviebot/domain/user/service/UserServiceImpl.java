@@ -1,5 +1,8 @@
 package io.github.chunyoungsang.moviebot.domain.user.service;
 
+import io.github.chunyoungsang.moviebot.domain.user.exception.UserErrorCode;
+import io.github.chunyoungsang.moviebot.global.exception.BusinessException;
+
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import io.github.chunyoungsang.moviebot.domain.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,8 +28,7 @@ public class UserServiceImpl implements UserService {
     @Transactional(readOnly = true)
     public User getByChatIdOrThrow(String chatId) {
         return userRepository.findByChatId(chatId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "등록된 사용자가 없습니다. /start 를 먼저 입력하세요."));
+                .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND, "chatId=" + chatId));
     }
 
     @Override
