@@ -58,7 +58,7 @@ import static org.mockito.Mockito.verify;
  * 실패 메시지가 곧 문제의 재현 결과다.
  *
  * - 실제 텔레그램 호출을 막기 위해 RestTemplate 을 mock 으로 교체한다.
- *   TelegramService 자체는 실제 빈을 사용해 @Async 와 예외를 삼키는 동작을 그대로 재현한다.
+ *   TelegramClient 자체는 실제 빈을 사용해 @Async 와 예외를 삼키는 동작을 그대로 재현한다.
  * - 크롤러(Playwright)는 mock 으로 교체한다.
  * - 실제 커밋/롤백을 봐야 하므로 테스트 클래스에 @Transactional 을 붙이지 않는다.
  */

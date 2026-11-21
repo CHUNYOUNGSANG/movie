@@ -1,6 +1,5 @@
-package io.github.chunyoungsang.moviebot.telegram.service;
+package io.github.chunyoungsang.moviebot.telegram.client;
 
-import io.github.chunyoungsang.moviebot.movie.dto.ScreeningResult;
 import io.github.chunyoungsang.moviebot.notification.sender.MessageSendException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -12,8 +11,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
@@ -22,12 +19,12 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("TelegramService")
-class TelegramServiceTest {
+@DisplayName("TelegramClient")
+class TelegramClientTest {
 
     @Mock private RestTemplate restTemplate;
     @Mock private TelegramRateLimiter rateLimiter;
-    @InjectMocks private TelegramService telegramService;
+    @InjectMocks private TelegramClient telegramService;
 
     @BeforeEach
     void setUp() {
@@ -137,6 +134,40 @@ class TelegramServiceTest {
         org.mockito.InOrder order = org.mockito.Mockito.inOrder(rateLimiter, restTemplate);
         order.verify(rateLimiter).acquire();
         order.verify(restTemplate).postForObject(anyString(), any(Map.class), eq(Map.class));
+    }
+
+    @Test
+    @DisplayName("getUpdates() 는 offset 을 붙여 요청하고 result 목록을 돌려준다")
+    void getUpdates_usesOffset() {
+        given(restTemplate.getForObject(contains("getUpdates?offset=101"), eq(Map.class))).willReturn(Map.of(
+                "ok", true, "result", List.of(Map.of("update_id", 101))));
+
+        org.assertj.core.api.Assertions.assertThat(telegramService.getUpdates(101L)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("getUpdates() 는 호출이 실패하면 빈 목록을 돌려준다 (폴링을 멈추지 않음)")
+    void getUpdates_returnsEmptyOnFailure() {
+        given(restTemplate.getForObject(anyString(), eq(Map.class)))
+                .willThrow(new org.springframework.web.client.RestClientException("장애"));
+
+        org.assertj.core.api.Assertions.assertThat(telegramService.getUpdates(0L)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("setMyCommands() 는 명령어를 받은 순서대로 메뉴에 등록한다")
+    @SuppressWarnings("unchecked")
+    void setMyCommands_keepsOrder() {
+        java.util.LinkedHashMap<String, String> menu = new java.util.LinkedHashMap<>();
+        menu.put("start", "알림 구독 시작");
+        menu.put("help", "사용법 안내");
+
+        telegramService.setMyCommands(menu);
+
+        org.mockito.ArgumentCaptor<Map<String, Object>> body = org.mockito.ArgumentCaptor.forClass(Map.class);
+        then(restTemplate).should().postForObject(contains("/setMyCommands"), body.capture(), eq(Map.class));
+        org.assertj.core.api.Assertions.assertThat((List<Map<String, String>>) body.getValue().get("commands"))
+                .extracting(m -> m.get("command")).containsExactly("start", "help");
     }
 
     private MessageSendException deliverError() {

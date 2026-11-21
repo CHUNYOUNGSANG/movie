@@ -1,4 +1,4 @@
-package io.github.chunyoungsang.moviebot.telegram.service;
+package io.github.chunyoungsang.moviebot.telegram.bot;
 
 import io.github.chunyoungsang.moviebot.movie.crawler.MovieCrawler;
 import io.github.chunyoungsang.moviebot.movie.entity.Movie;
@@ -11,6 +11,7 @@ import io.github.chunyoungsang.moviebot.notification.repository.NotificationHist
 import io.github.chunyoungsang.moviebot.notification.repository.NotificationSubscriptionRepository;
 import io.github.chunyoungsang.moviebot.user.entity.User;
 import io.github.chunyoungsang.moviebot.user.repository.UserRepository;
+import io.github.chunyoungsang.moviebot.telegram.client.TelegramClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -54,9 +55,9 @@ class HistoryDeliveryStatusTest {
 
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;
-    @MockitoBean private TelegramService messageSender;   // 봇 답장을 가로채 확인
+    @MockitoBean private TelegramClient messageSender;   // 봇 답장을 가로채 확인
 
-    @Autowired private TelegramPollingService pollingService;
+    @Autowired private BotCommandDispatcher pollingService;
     @Autowired private UserRepository userRepository;
     @Autowired private MovieRepository movieRepository;
     @Autowired private NotificationSubscriptionRepository subscriptionRepository;

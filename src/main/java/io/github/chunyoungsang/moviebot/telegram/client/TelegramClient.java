@@ -1,6 +1,5 @@
-package io.github.chunyoungsang.moviebot.telegram.service;
+package io.github.chunyoungsang.moviebot.telegram.client;
 
-import jakarta.annotation.PostConstruct;
 import io.github.chunyoungsang.moviebot.notification.sender.MessageSendException;
 import io.github.chunyoungsang.moviebot.notification.sender.MessageSender;
 import lombok.RequiredArgsConstructor;
@@ -23,11 +22,12 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 /**
- * 텔레그램 Bot API 클라이언트.
+ * 텔레그램 Bot API 클라이언트. 봇 토큰과 HTTP 호출, 발송 속도 제한, 429 처리를 이 클래스만 안다.
  * - 알림 발송: 알림 도메인의 발송 포트(MessageSender)를 구현 (실패 시 예외)
- * - 봇 응답: 명령에 대한 답장 (실패해도 예외를 던지지 않음)
+ * - 봇 답장: 명령에 대한 답장 (실패해도 예외를 던지지 않음)
+ * - 명령 수신(getUpdates), 명령 메뉴 등록(setMyCommands)
  */
-public class TelegramService implements MessageSender {
+public class TelegramClient implements MessageSender {
 
     private final RestTemplate restTemplate;
     private final TelegramRateLimiter rateLimiter;
@@ -35,29 +35,44 @@ public class TelegramService implements MessageSender {
     @Value("${telegram.bot.token}")
     private String botToken;
 
-    // 텔레그램 "/" 자동완성 메뉴에 노출할 명령어 목록 (텔레그램 규칙상 소문자 영문/숫자/밑줄만 허용)
-    private static final List<Map<String, String>> COMMANDS = List.of(
-            Map.of("command", "start", "description", "알림 구독 시작"),
-            Map.of("command", "add", "description", "영화 알림 신청"),
-            Map.of("command", "list", "description", "대기 중인 알림 목록"),
-            Map.of("command", "history", "description", "완료된 알림 목록"),
-            Map.of("command", "cancel", "description", "알림 취소"),
-            Map.of("command", "stop", "description", "알림 구독 해제"),
-            Map.of("command", "help", "description", "사용법 안내")
-    );
+    private static final String API = "https://api.telegram.org/bot";
 
-    @PostConstruct
-    public void registerCommands() {
-        if (botToken.startsWith("YOUR_")) {
+    /** 토큰이 설정되지 않은 환경(로컬, CI)에서는 텔레그램을 호출하지 않는다 */
+    public boolean isConfigured() {
+        return botToken != null && !botToken.isBlank() && !botToken.startsWith("YOUR_");
+    }
+
+    /** "/" 자동완성 메뉴 등록. 명령어 → 설명 (순서대로 노출) */
+    public void setMyCommands(Map<String, String> commands) {
+        if (!isConfigured()) {
             log.warn("[텔레그램 미설정] 자동완성 메뉴 등록 스킵");
             return;
         }
-        String url = "https://api.telegram.org/bot" + botToken + "/setMyCommands";
+        List<Map<String, String>> body = commands.entrySet().stream()
+                .map(e -> Map.of("command", e.getKey(), "description", e.getValue()))
+                .toList();
         try {
-            restTemplate.postForObject(url, Map.of("commands", COMMANDS), Map.class);
-            log.info("텔레그램 자동완성 메뉴 등록 완료");
+            restTemplate.postForObject(API + botToken + "/setMyCommands", Map.of("commands", body), Map.class);
+            log.info("텔레그램 자동완성 메뉴 등록 완료 ({}개)", body.size());
         } catch (Exception e) {
             log.error("텔레그램 자동완성 메뉴 등록 실패: {}", redact(e));
+        }
+    }
+
+    /** offset 이후의 새 메시지(update) 목록. 미설정이거나 실패하면 빈 목록 (실패는 로그로 남김) */
+    public List<Map<String, Object>> getUpdates(long offset) {
+        if (!isConfigured()) return List.of();
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restTemplate.getForObject(
+                    API + botToken + "/getUpdates?offset=" + offset + "&timeout=1", Map.class);
+            if (response == null || !Boolean.TRUE.equals(response.get("ok"))) return List.of();
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> updates = (List<Map<String, Object>>) response.get("result");
+            return updates == null ? List.of() : updates;
+        } catch (Exception e) {
+            log.error("텔레그램 폴링 오류: {}", redact(e));   // 요청 URL 에 토큰이 들어 있어 가린다
+            return List.of();
         }
     }
 
@@ -114,12 +129,12 @@ public class TelegramService implements MessageSender {
     }
 
     private void post(String chatId, String text) {
-        if (botToken.startsWith("YOUR_")) {
+        if (!isConfigured()) {
             log.warn("[텔레그램 미설정] chatId={}, 메시지:\n{}", chatId, text);
             return;
         }
 
-        String url = "https://api.telegram.org/bot" + botToken + "/sendMessage";
+        String url = API + botToken + "/sendMessage";
         Map<String, String> body = new HashMap<>();
         body.put("chat_id", chatId);
         body.put("text", text);

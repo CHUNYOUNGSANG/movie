@@ -1,4 +1,4 @@
-package io.github.chunyoungsang.moviebot.telegram.service;
+package io.github.chunyoungsang.moviebot.telegram.bot;
 
 import io.github.chunyoungsang.moviebot.movie.entity.Movie;
 import io.github.chunyoungsang.moviebot.notification.entity.NotificationSubscription;
@@ -6,6 +6,8 @@ import io.github.chunyoungsang.moviebot.notification.outbox.OutboxStatus;
 import io.github.chunyoungsang.moviebot.notification.service.NotificationService;
 import io.github.chunyoungsang.moviebot.user.entity.User;
 import io.github.chunyoungsang.moviebot.user.service.UserService;
+import io.github.chunyoungsang.moviebot.telegram.bot.command.*;
+import io.github.chunyoungsang.moviebot.telegram.client.TelegramClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -13,7 +15,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.web.client.RestTemplate;
 
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -31,20 +32,29 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("TelegramPollingService")
-class TelegramPollingServiceTest {
+@DisplayName("텔레그램 봇 (폴링 → 명령 분배 → 명령어)")
+class TelegramBotTest {
 
-    @Mock private RestTemplate restTemplate;
     @Mock private UserService userService;
     @Mock private NotificationService notificationService;
-    @Mock private TelegramService messageSender;
+    @Mock private TelegramClient messageSender;
     @Mock private TelegramOffsetStore offsetStore;
 
-    private TelegramPollingService service;
+    private BotCommandDispatcher service;
+    private TelegramPoller poller;
 
     @BeforeEach
     void setUp() {
-        service = new TelegramPollingService(restTemplate, userService, notificationService, messageSender, offsetStore);
+        // 운영과 같은 명령어 구성 (스프링이 BotCommand 빈을 모아 주입하는 것을 손으로 재현)
+        service = new BotCommandDispatcher(List.of(
+                new StartCommand(userService, messageSender),
+                new AddCommand(notificationService, messageSender),
+                new ListCommand(userService, notificationService, messageSender),
+                new HistoryCommand(userService, notificationService, messageSender),
+                new CancelCommand(notificationService, messageSender),
+                new StopCommand(userService, messageSender),
+                new HelpCommand(messageSender)));
+        poller = new TelegramPoller(messageSender, offsetStore, service);
     }
 
     @Nested
@@ -54,15 +64,27 @@ class TelegramPollingServiceTest {
         @Test
         @DisplayName("DB 에 저장된 offset 으로 getUpdates 를 요청하고, 처리한 update 다음 offset 을 저장한다")
         void usesSharedOffset() {
-            org.springframework.test.util.ReflectionTestUtils.setField(service, "botToken", "test-token");
             given(offsetStore.get()).willReturn(101L);
-            given(restTemplate.getForObject(contains("offset=101"), eq(Map.class))).willReturn(Map.of(
-                    "ok", true,
-                    "result", List.of(Map.of("update_id", 101))));
+            given(messageSender.getUpdates(101L)).willReturn(List.of(Map.of("update_id", 101)));
 
-            service.poll();
+            poller.poll();
 
             then(offsetStore).should().save(102L);
+        }
+
+        @Test
+        @DisplayName("한 명령의 처리가 실패해도 같은 배치의 다음 명령은 처리한다")
+        void continuesAfterFailedUpdate() {
+            given(offsetStore.get()).willReturn(1L);
+            given(messageSender.getUpdates(1L)).willReturn(List.of(
+                    Map.of("update_id", 1, "message", Map.of("chat", Map.of("id", "111"), "text", "/start")),
+                    Map.of("update_id", 2, "message", Map.of("chat", Map.of("id", "222"), "text", "/help"))));
+            given(userService.activate(any(), any())).willThrow(new IllegalStateException("DB 장애 (테스트)"));
+
+            poller.poll();
+
+            then(offsetStore).should().save(3L);
+            then(messageSender).should().sendMessage(eq("222"), contains("사용법"));
         }
     }
 
