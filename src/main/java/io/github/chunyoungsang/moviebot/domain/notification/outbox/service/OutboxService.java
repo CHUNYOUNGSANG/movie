@@ -7,14 +7,12 @@ import io.github.chunyoungsang.moviebot.domain.notification.outbox.repository.No
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationHistory;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationHistoryRepository;
-import io.github.chunyoungsang.moviebot.domain.notification.sender.MessageSendException;
 import lombok.RequiredArgsConstructor;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.config.OutboxProperties;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -35,6 +33,7 @@ public class OutboxService {
     private final NotificationOutboxRepository outboxRepository;
     private final NotificationHistoryRepository historyRepository;
     private final OutboxProperties properties;
+    private final RetryPolicy retryPolicy;
 
     /** 매칭 트랜잭션 안에서 호출된다 (구독 상태 변경과 함께 커밋/롤백). */
     public NotificationOutbox enqueue(NotificationSubscription sub, String message) {
@@ -65,46 +64,26 @@ public class OutboxService {
     }
 
     /**
-     * 발송 실패 처리.
-     * - 영구 실패(재시도 불가)이거나 최대 시도 횟수에 도달하면 DEAD + FAIL 이력
-     * - 그 외에는 지수 백오프(base × 2^(n-1), 최대 1시간) 후 다시 PENDING
+     * 발송 실패 처리. 재시도 여부와 다음 시도 시각은 RetryPolicy 가 정한다. 포기(DEAD)하면 FAIL 이력을 남긴다.
      *
      * @return 이번 실패를 어떻게 처리했는지 (RETRY / RATE_LIMITED / DEAD)
      */
     public DeliveryResult markFailed(Long outboxId, Exception cause) {
         NotificationOutbox outbox = outboxRepository.findById(outboxId).orElseThrow();
+        RetryPolicy.Decision decision = retryPolicy.decide(outbox.getAttemptCount(), cause, LocalDateTime.now());
 
-        // 속도 제한(429): 메시지 자체의 실패가 아니므로 시도 횟수를 쓰지 않고, 텔레그램이 알려준 시간 뒤에 다시 보낸다
-        if (cause instanceof MessageSendException mse && mse.isRateLimited()) {
-            outbox.setStatus(OutboxStatus.PENDING);
-            outbox.setLockedAt(null);
-            outbox.setLastError(truncate(cause.getMessage()));
-            outbox.setNextAttemptAt(LocalDateTime.now().plus(mse.getRetryAfter()));
-            return DeliveryResult.RATE_LIMITED;
-        }
-
-        int attempts = outbox.getAttemptCount() + 1;
-        outbox.setAttemptCount(attempts);
+        outbox.setAttemptCount(decision.attempts());
         outbox.setLastError(truncate(cause.getMessage()));
         outbox.setLockedAt(null);
-
-        boolean retryable = !(cause instanceof MessageSendException mse) || mse.isRetryable();
-        if (!retryable || attempts >= properties.maxAttempts()) {
+        if (decision.isDead()) {
             outbox.setStatus(OutboxStatus.DEAD);
             historyRepository.save(NotificationHistory.builder()
                     .subscription(outbox.getSubscription()).status("FAIL").build());
-            return DeliveryResult.DEAD;
+        } else {
+            outbox.setStatus(OutboxStatus.PENDING);
+            outbox.setNextAttemptAt(decision.nextAttemptAt());
         }
-        outbox.setStatus(OutboxStatus.PENDING);
-        outbox.setNextAttemptAt(LocalDateTime.now().plus(backoff(attempts)));
-        return DeliveryResult.RETRY;
-    }
-
-    /** attempts 회 실패 후 다음 시도까지의 대기 시간 */
-    Duration backoff(int attempts) {
-        long multiplier = 1L << Math.min(attempts - 1, 20);   // 오버플로 방지
-        Duration delay = Duration.ofMillis(properties.baseDelayMs()).multipliedBy(multiplier);
-        return delay.compareTo(properties.maxDelay()) > 0 ? properties.maxDelay() : delay;
+        return decision.result();
     }
 
     @Transactional(readOnly = true)
