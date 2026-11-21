@@ -1,4 +1,4 @@
-package io.github.chunyoungsang.moviebot.domain.notification.outbox;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.service;
 
 /** 발송 시도 한 번의 결과 (지표 태그로 사용) */
 public enum DeliveryResult {

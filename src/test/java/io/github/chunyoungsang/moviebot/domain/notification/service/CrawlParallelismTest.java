@@ -8,7 +8,7 @@ import io.github.chunyoungsang.moviebot.domain.movie.repository.ScheduleReposito
 import io.github.chunyoungsang.moviebot.domain.movie.repository.ScreenTypeRepository;
 import io.github.chunyoungsang.moviebot.domain.movie.repository.TheaterRepository;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.NotificationOutboxRepository;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.repository.NotificationOutboxRepository;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationHistoryRepository;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationSubscriptionRepository;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;

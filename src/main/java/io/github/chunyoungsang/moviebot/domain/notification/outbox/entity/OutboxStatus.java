@@ -1,4 +1,4 @@
-package io.github.chunyoungsang.moviebot.domain.notification.outbox;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.entity;
 
 public enum OutboxStatus {
     /** 발송 대기 (nextAttemptAt 이후 발송 가능) */

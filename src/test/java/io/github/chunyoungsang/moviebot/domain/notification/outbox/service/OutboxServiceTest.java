@@ -1,4 +1,8 @@
-package io.github.chunyoungsang.moviebot.domain.notification.outbox;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.service;
+
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.NotificationOutbox;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.repository.NotificationOutboxRepository;
 
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationHistoryRepository;
@@ -24,12 +28,12 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("NotificationOutboxService.markFailed()")
-class NotificationOutboxServiceTest {
+@DisplayName("OutboxService.markFailed()")
+class OutboxServiceTest {
 
     @Mock private NotificationOutboxRepository outboxRepository;
     @Mock private NotificationHistoryRepository historyRepository;
-    @InjectMocks private NotificationOutboxService service;
+    @InjectMocks private OutboxService service;
 
     private NotificationOutbox outbox;
 

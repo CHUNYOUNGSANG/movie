@@ -1,4 +1,7 @@
-package io.github.chunyoungsang.moviebot.domain.notification.outbox;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.repository;
+
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.NotificationOutbox;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -18,16 +21,16 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
     @Modifying(clearAutomatically = true)
     @Query("""
             update NotificationOutbox o
-               set o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus.SENDING, o.lockedAt = :now
+               set o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus.SENDING, o.lockedAt = :now
              where o.outboxId = :id
-               and o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus.PENDING
+               and o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus.PENDING
                and o.nextAttemptAt <= :now
             """)
     int claim(@Param("id") Long id, @Param("now") LocalDateTime now);
 
     @Query("""
             select o.outboxId from NotificationOutbox o
-             where o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus.PENDING
+             where o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus.PENDING
                and o.nextAttemptAt <= :now
              order by o.nextAttemptAt
             """)
@@ -51,7 +54,7 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
     @Query("""
             select o.status as status, count(o) as count
               from NotificationOutbox o
-             where o.status <> io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus.SENT
+             where o.status <> io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus.SENT
              group by o.status
             """)
     List<StatusCountView> countUnsentByStatus();
@@ -64,7 +67,7 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
     /** 모니터링용: 가장 오래 기다리고 있는 PENDING 의 생성 시각 */
     @Query("""
             select min(o.createdAt) from NotificationOutbox o
-             where o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus.PENDING
+             where o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus.PENDING
             """)
     LocalDateTime findOldestPendingCreatedAt();
 
@@ -72,8 +75,8 @@ public interface NotificationOutboxRepository extends JpaRepository<Notification
     @Modifying
     @Query("""
             update NotificationOutbox o
-               set o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus.PENDING, o.lockedAt = null
-             where o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus.SENDING
+               set o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus.PENDING, o.lockedAt = null
+             where o.status = io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus.SENDING
                and o.lockedAt < :threshold
             """)
     int releaseStale(@Param("threshold") LocalDateTime threshold);

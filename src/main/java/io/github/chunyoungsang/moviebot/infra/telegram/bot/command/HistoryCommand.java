@@ -1,7 +1,7 @@
 package io.github.chunyoungsang.moviebot.infra.telegram.bot.command;
 
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus;
 import io.github.chunyoungsang.moviebot.domain.notification.service.NotificationService;
 import io.github.chunyoungsang.moviebot.infra.telegram.client.TelegramClient;
 import io.github.chunyoungsang.moviebot.domain.user.service.UserService;

@@ -4,11 +4,11 @@ import io.github.chunyoungsang.moviebot.domain.movie.dto.ScreeningResult;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Movie;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Theater;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.NotificationOutbox;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.NotificationOutboxService;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.NotificationOutbox;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
 import io.github.chunyoungsang.moviebot.domain.notification.sender.AlertMessageFormatter;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationSubscriptionRepository;
-import io.github.chunyoungsang.moviebot.domain.notification.event.NotificationMatchedEvent;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch.OutboxEnqueuedEvent;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,7 +35,7 @@ import static org.mockito.Mockito.never;
 class NotificationStateServiceTest {
 
     @Mock private NotificationSubscriptionRepository subscriptionRepository;
-    @Mock private NotificationOutboxService outboxService;
+    @Mock private OutboxService outboxService;
     @Mock private AlertMessageFormatter alertMessageFormatter;
     @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -66,7 +66,7 @@ class NotificationStateServiceTest {
             then(subscriptionRepository).should().claimTriggered(1L);
             then(outboxService).should().enqueue(sub, "알림 본문");
             then(eventPublisher).should().publishEvent(
-                    argThat((Object e) -> e instanceof NotificationMatchedEvent ev && ev.outboxId().equals(10L)));
+                    argThat((Object e) -> e instanceof OutboxEnqueuedEvent ev && ev.outboxId().equals(10L)));
         }
 
         @Test

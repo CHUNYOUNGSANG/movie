@@ -1,4 +1,8 @@
-package io.github.chunyoungsang.moviebot.domain.notification.outbox;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.service;
+
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.NotificationOutbox;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.repository.NotificationOutboxRepository;
 
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationHistory;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
@@ -24,7 +28,7 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 @Transactional
-public class NotificationOutboxService {
+public class OutboxService {
 
     /** 발송 중(SENDING) 상태로 이 시간 이상 멈춰 있으면 서버 다운으로 보고 되돌린다. */
     private static final Duration STALE_LOCK = Duration.ofMinutes(5);

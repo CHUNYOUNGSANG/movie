@@ -1,4 +1,6 @@
-package io.github.chunyoungsang.moviebot.domain.notification.outbox;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch;
+
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +17,7 @@ public class OutboxRelayScheduler {
 
     private static final int BATCH_SIZE = 50;
 
-    private final NotificationOutboxService outboxService;
+    private final OutboxService outboxService;
     private final NotificationDispatcher dispatcher;
 
     @Scheduled(fixedDelayString = "${notification.outbox.relay-delay-ms:10000}")
