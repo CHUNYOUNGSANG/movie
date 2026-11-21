@@ -4,13 +4,13 @@ plugins {
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
-group = 'com.example'
+group = 'io.github.chunyoungsang'
 version = '0.0.1-SNAPSHOT'
 description = 'moviebot'
 
 // 기본 패키지에 있는 main class를 명시
 springBoot {
-    mainClass = 'MovieBotApplication'
+    mainClass = 'io.github.chunyoungsang.moviebot.MovieBotApplication'
 }
 
 java {
@@ -68,6 +68,8 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
     testImplementation 'org.testcontainers:testcontainers-mysql'
+    // 패키지 의존 규칙(순환 금지, 의존 방향)을 테스트로 고정
+    testImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

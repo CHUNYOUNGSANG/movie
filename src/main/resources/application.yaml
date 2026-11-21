@@ -70,4 +70,4 @@ management:
 # ── 로그 ────────────────────────────────────────────────────
 logging:
   level:
-    com.example.moviebot: INFO
+    io.github.chunyoungsang.moviebot: INFO
