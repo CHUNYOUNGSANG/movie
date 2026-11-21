@@ -4,13 +4,13 @@ plugins {
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
-group = 'com.example'
+group = 'io.github.chunyoungsang'
 version = '0.0.1-SNAPSHOT'
 description = 'moviebot'
 
 // 기본 패키지에 있는 main class를 명시
 springBoot {
-    mainClass = 'MovieBotApplication'
+    mainClass = 'io.github.chunyoungsang.moviebot.MovieBotApplication'
 }
 
 java {
