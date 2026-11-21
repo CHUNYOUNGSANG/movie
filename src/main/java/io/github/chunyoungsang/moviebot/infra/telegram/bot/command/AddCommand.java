@@ -1,5 +1,7 @@
 package io.github.chunyoungsang.moviebot.infra.telegram.bot.command;
 
+import io.github.chunyoungsang.moviebot.global.exception.BusinessException;
+
 import io.github.chunyoungsang.moviebot.domain.notification.dto.NotificationRegisterRequest;
 import io.github.chunyoungsang.moviebot.domain.notification.service.NotificationService;
 import io.github.chunyoungsang.moviebot.infra.telegram.bot.BotCommand;
@@ -71,8 +73,8 @@ public class AddCommand implements BotCommand {
                     screenTypeName != null ? screenTypeName : "전체 관"
             ));
             log.info("알림 신청 (텔레그램): chatId={}, movie={}, date={}", chatId, movieTitle, targetDate);
-        } catch (IllegalArgumentException e) {
-            telegramClient.sendMessage(chatId, "❌ " + e.getMessage());
+        } catch (BusinessException e) {   // 가입 전 사용자 등 (예상하지 못한 오류는 폴러가 로그로 남김)
+            telegramClient.sendMessage(chatId, "❌ " + e.getErrorCode().message());
         }
     }
 }
