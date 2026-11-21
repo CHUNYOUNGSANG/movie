@@ -4,11 +4,9 @@ import io.github.chunyoungsang.moviebot.domain.movie.dto.ScreeningResult;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Movie;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Theater;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.NotificationOutbox;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
 import io.github.chunyoungsang.moviebot.domain.notification.sender.AlertMessageFormatter;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationSubscriptionRepository;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch.OutboxEnqueuedEvent;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,16 +14,13 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
-import org.springframework.context.ApplicationEventPublisher;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -37,13 +32,12 @@ class NotificationStateServiceTest {
     @Mock private NotificationSubscriptionRepository subscriptionRepository;
     @Mock private OutboxService outboxService;
     @Mock private AlertMessageFormatter alertMessageFormatter;
-    @Mock private ApplicationEventPublisher eventPublisher;
 
     private NotificationStateService service;
 
     @BeforeEach
     void setUp() {
-        service = new NotificationStateService(subscriptionRepository, outboxService, alertMessageFormatter, eventPublisher);
+        service = new NotificationStateService(subscriptionRepository, outboxService, alertMessageFormatter);
     }
 
     @Nested
@@ -51,22 +45,18 @@ class NotificationStateServiceTest {
     class MarkMatched {
 
         @Test
-        @DisplayName("매칭되는 상영이 있으면 triggered=true 로 바꾸고 Outbox 에 기록하고 발송 이벤트를 발행한다")
+        @DisplayName("매칭되는 상영이 있으면 triggered=true 로 바꾸고 Outbox 에 기록한다")
         void notifiesOnMatch() {
             NotificationSubscription sub = subscription(1L, "123", null);
             given(subscriptionRepository.findAllBySubscriptionIdIn(List.of(1L))).willReturn(List.of(sub));
 
             given(subscriptionRepository.claimTriggered(1L)).willReturn(1);
             given(alertMessageFormatter.format(any())).willReturn("알림 본문");
-            given(outboxService.enqueue(sub, "알림 본문"))
-                    .willReturn(NotificationOutbox.builder().outboxId(10L).build());
 
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
             then(subscriptionRepository).should().claimTriggered(1L);
-            then(outboxService).should().enqueue(sub, "알림 본문");
-            then(eventPublisher).should().publishEvent(
-                    argThat((Object e) -> e instanceof OutboxEnqueuedEvent ev && ev.outboxId().equals(10L)));
+            then(outboxService).should().enqueue(sub, "알림 본문");   // 발송 이벤트 발행은 OutboxService 가 함께 한다
         }
 
         @Test
@@ -80,7 +70,6 @@ class NotificationStateServiceTest {
 
             then(subscriptionRepository).should(never()).claimTriggered(any());
             then(outboxService).shouldHaveNoInteractions();
-            then(eventPublisher).shouldHaveNoInteractions();
         }
 
         @Test
@@ -92,7 +81,6 @@ class NotificationStateServiceTest {
 
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
-            then(eventPublisher).shouldHaveNoInteractions();
         }
 
         @Test
@@ -105,7 +93,6 @@ class NotificationStateServiceTest {
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
             then(outboxService).shouldHaveNoInteractions();
-            then(eventPublisher).shouldHaveNoInteractions();
         }
     }
 
