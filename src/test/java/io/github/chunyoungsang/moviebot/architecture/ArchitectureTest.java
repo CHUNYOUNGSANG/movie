@@ -78,6 +78,24 @@ class ArchitectureTest {
                 .should().resideInAnyPackage(BASE, DOMAIN + "..", INFRA + "..", GLOBAL + ".."));
     }
 
+    private static final String OUTBOX = DOMAIN + ".notification.outbox";
+
+    @Test
+    @DisplayName("[outbox] 하위 패키지(entity, repository, service, dispatch, metrics, config)끼리 순환하지 않는다")
+    void outboxSubpackagesAreFreeOfCycles() {
+        check("outbox 하위 패키지 간 순환", slices().matching(OUTBOX + ".(*)..").should().beFreeOfCycles());
+    }
+
+    @Test
+    @DisplayName("[outbox] 밖에서는 service(OutboxService, DeliveryStatus)만 쓴다 — 엔티티·상태·발송 흐름은 감춘다")
+    void outboxIsUsedOnlyThroughItsService() {
+        check("outbox 내부를 밖에서 사용", noClasses()
+                .that().resideOutsideOfPackage(OUTBOX + "..")
+                .should().dependOnClassesThat().resideInAnyPackage(
+                        OUTBOX + ".entity..", OUTBOX + ".repository..", OUTBOX + ".dispatch..",
+                        OUTBOX + ".metrics..", OUTBOX + ".config.."));
+    }
+
     /** 위반 건수를 출력하고 0 이어야 통과 */
     private static void check(String name, ArchRule rule) {
         EvaluationResult result = rule.allowEmptyShould(true).evaluate(CLASSES);

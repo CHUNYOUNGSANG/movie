@@ -10,7 +10,7 @@ import io.github.chunyoungsang.moviebot.domain.movie.repository.ScreenTypeReposi
 import io.github.chunyoungsang.moviebot.domain.movie.repository.TheaterRepository;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationHistory;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.NotificationOutboxRepository;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.repository.NotificationOutboxRepository;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationHistoryRepository;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationSubscriptionRepository;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
@@ -184,7 +184,14 @@ class NotificationReliabilityTest {
 
         AtomicInteger activeDuringCrawl = new AtomicInteger(-1);
         given(crawler.crawl(anyString(), any(), any())).willAnswer(inv -> {
-            activeDuringCrawl.set(hikari.getHikariPoolMXBean().getActiveConnections());
+            // 크롤링 내내 커넥션을 쥐고 있으면 매번 1 이상이다. relay 같은 백그라운드 작업은 잠깐만 쓰므로
+            // 여러 번 재서 최솟값을 본다 (한 번만 재면 그 순간 relay 가 쓰던 커넥션까지 세어 가끔 실패했음)
+            int min = Integer.MAX_VALUE;
+            for (int i = 0; i < 20; i++) {
+                min = Math.min(min, hikari.getHikariPoolMXBean().getActiveConnections());
+                Thread.sleep(5);
+            }
+            activeDuringCrawl.set(min);
             return List.of();
         });
 

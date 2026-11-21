@@ -6,7 +6,7 @@ import io.github.chunyoungsang.moviebot.domain.user.exception.UserErrorCode;
 
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Movie;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.DeliveryStatus;
 import io.github.chunyoungsang.moviebot.domain.notification.service.NotificationService;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import io.github.chunyoungsang.moviebot.domain.user.service.UserService;
@@ -174,6 +174,7 @@ class TelegramBotTest {
                     subscription(1L, "스파이더맨", false),
                     subscription(2L, "파묘", true)
             ));
+            given(notificationService.findDeliveryStatuses(List.of(2L))).willReturn(Map.of(2L, DeliveryStatus.DELIVERED));
 
             service.processUpdate(update("111", "chun", "/history"));
 
@@ -192,7 +193,7 @@ class TelegramBotTest {
                     subscription(3L, "위키드", true)
             ));
             given(notificationService.findDeliveryStatuses(List.of(1L, 2L, 3L))).willReturn(Map.of(
-                    1L, OutboxStatus.SENT, 2L, OutboxStatus.PENDING, 3L, OutboxStatus.DEAD));
+                    1L, DeliveryStatus.DELIVERED, 2L, DeliveryStatus.IN_PROGRESS, 3L, DeliveryStatus.FAILED));
 
             service.processUpdate(update("111", "chun", "/history"));
 
@@ -209,7 +210,7 @@ class TelegramBotTest {
             User user = User.builder().chatId("111").build();
             given(userService.findByChatId("111")).willReturn(Optional.of(user));
             given(notificationService.findByUser(user)).willReturn(List.of(subscription(1L, "스파이더맨", true)));
-            given(notificationService.findDeliveryStatuses(List.of(1L))).willReturn(Map.of(1L, OutboxStatus.SENT));
+            given(notificationService.findDeliveryStatuses(List.of(1L))).willReturn(Map.of(1L, DeliveryStatus.DELIVERED));
 
             service.processUpdate(update("111", "chun", "/history"));
 

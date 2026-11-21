@@ -1,4 +1,7 @@
-package io.github.chunyoungsang.moviebot.domain.notification.outbox;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch;
+
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.DeliveryResult;
 
 import io.github.chunyoungsang.moviebot.domain.notification.sender.MessageSender;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -18,12 +21,12 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class NotificationDispatcher {
 
-    private final NotificationOutboxService outboxService;
+    private final OutboxService outboxService;
     private final MessageSender messageSender;
     private final MeterRegistry meterRegistry;
 
     public void dispatch(Long outboxId) {
-        NotificationOutboxService.OutboxMessage msg = outboxService.claim(outboxId).orElse(null);
+        OutboxService.OutboxMessage msg = outboxService.claim(outboxId).orElse(null);
         if (msg == null) return;   // 다른 쪽에서 이미 처리 중이거나 아직 차례가 아님
 
         Timer.Sample sample = Timer.start(meterRegistry);

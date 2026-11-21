@@ -1,5 +1,7 @@
 package io.github.chunyoungsang.moviebot.domain.notification.service;
 
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
+
 import io.github.chunyoungsang.moviebot.global.exception.BusinessException;
 import io.github.chunyoungsang.moviebot.domain.notification.exception.NotificationErrorCode;
 import io.github.chunyoungsang.moviebot.domain.user.exception.UserErrorCode;
@@ -44,7 +46,7 @@ class NotificationServiceImplTest {
     @Mock private NotificationSubscriptionRepository notificationSubscriptionRepository;
     @Mock private MovieService movieService;
     @Mock private UserService userService;
-    @Mock private io.github.chunyoungsang.moviebot.domain.notification.outbox.NotificationOutboxService outboxService;
+    @Mock private io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService outboxService;
 
     private NotificationServiceImpl service;
 

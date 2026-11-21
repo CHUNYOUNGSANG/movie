@@ -9,8 +9,8 @@ import io.github.chunyoungsang.moviebot.domain.movie.entity.Theater;
 import io.github.chunyoungsang.moviebot.domain.movie.service.MovieService;
 import io.github.chunyoungsang.moviebot.domain.notification.dto.NotificationRegisterRequest;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.NotificationOutboxService;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.DeliveryStatus;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationSubscriptionRepository;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import io.github.chunyoungsang.moviebot.domain.user.service.UserService;
@@ -32,7 +32,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationSubscriptionRepository notificationSubscriptionRepository;
     private final MovieService movieService;     // SRP: 영화/극장/상영관/스케줄 관리는 Movie 도메인 책임
     private final UserService userService;       // SRP: 사용자 조회/구독 상태 관리는 User 도메인 책임
-    private final NotificationOutboxService outboxService;
+    private final OutboxService outboxService;
 
     @Override
     public NotificationSubscription register(NotificationRegisterRequest req) {
@@ -70,8 +70,8 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional(readOnly = true)
-    public Map<Long, OutboxStatus> findDeliveryStatuses(List<Long> subscriptionIds) {
-        return outboxService.findLatestStatuses(subscriptionIds);
+    public Map<Long, DeliveryStatus> findDeliveryStatuses(List<Long> subscriptionIds) {
+        return outboxService.findDeliveryStatuses(subscriptionIds);
     }
 
     @Override
