@@ -58,8 +58,10 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<NotificationSubscription> findAll() {
-        return notificationSubscriptionRepository.findAll();
+    public List<NotificationSubscription> findByChatId(String chatId) {
+        return userService.findByChatId(chatId)
+                .map(notificationSubscriptionRepository::findByUser)
+                .orElse(List.of());
     }
 
     @Override
