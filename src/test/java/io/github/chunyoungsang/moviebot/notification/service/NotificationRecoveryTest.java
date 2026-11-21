@@ -63,7 +63,7 @@ class NotificationRecoveryTest {
     @MockitoBean private MovieCrawler crawler;
     @MockitoBean private NotificationSendListener sendListener;   // 리스너가 동작하지 못한 상황
 
-    @Autowired private NotificationService notificationService;
+    @Autowired private BookingCheckService bookingCheckService;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Autowired private UserRepository userRepository;
@@ -102,7 +102,7 @@ class NotificationRecoveryTest {
                 "CGV", "CGV 강남 1관", "위키드", TARGET_DATE, LocalTime.of(19, 0), 100, true,
                 "https://cgv.co.kr/ticket?siteNo=0056")));
 
-        notificationService.checkAndNotify();
+        bookingCheckService.checkAndNotify();
 
         verify(restTemplate, timeout(3000)).postForObject(
                 argThat((String url) -> url != null && url.endsWith("/sendMessage")),

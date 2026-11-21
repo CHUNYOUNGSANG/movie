@@ -70,7 +70,7 @@ class TelegramRateLimitTest {
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;
 
-    @Autowired private NotificationService notificationService;
+    @Autowired private BookingCheckService bookingCheckService;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Autowired private UserRepository userRepository;
@@ -111,7 +111,7 @@ class TelegramRateLimitTest {
         given(restTemplate.postForObject(anyString(), any(), eq(Map.class))).willAnswer(inv -> telegram.handle(inv.getArgument(0)));
 
         long start = System.currentTimeMillis();
-        notificationService.checkAndNotify();
+        bookingCheckService.checkAndNotify();
         int remaining = waitUntilSettled(30_000);
         long elapsed = System.currentTimeMillis() - start;
 

@@ -81,7 +81,7 @@ class NotificationReliabilityTest {
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;
 
-    @Autowired private NotificationService notificationService;
+    @Autowired private BookingCheckService bookingCheckService;
     @Autowired private NotificationStateService notificationStateService;
     @Autowired private TransactionTemplate transactionTemplate;
     @Autowired private DataSource dataSource;
@@ -124,7 +124,7 @@ class NotificationReliabilityTest {
                 .willThrow(new RestClientException("텔레그램 API 장애 (테스트)"))   // 1회차 실패
                 .willReturn(Map.of("ok", true));                                  // 2회차 성공
 
-        notificationService.checkAndNotify();
+        bookingCheckService.checkAndNotify();
 
         waitUntil(() -> historyRepository.count() > 0, 3000);
         verify(restTemplate, times(2)).postForObject(sendMessageUrl(), any(), eq(Map.class));
@@ -151,8 +151,8 @@ class NotificationReliabilityTest {
             return List.of(openScreening(inv.getArgument(0)));
         });
 
-        notificationService.checkAndNotify();
-        notificationService.checkAndNotify();
+        bookingCheckService.checkAndNotify();
+        bookingCheckService.checkAndNotify();
 
         // 비동기 발송이 모두 끝날 때까지 기다린 뒤 chatId 별 발송 횟수를 확인
         verify(restTemplate, after(2000).times(1)).postForObject(sendMessageUrl(), chatIdIs("2001"), eq(Map.class));
@@ -188,7 +188,7 @@ class NotificationReliabilityTest {
             return List.of();
         });
 
-        notificationService.checkAndNotify();
+        bookingCheckService.checkAndNotify();
 
         assertThat(activeDuringCrawl.get())
                 .as("크롤링 중 사용 중인 DB 커넥션 수 (Playwright 크롤링은 수 초가 걸리므로 그동안 커넥션이 묶임)")
@@ -227,7 +227,7 @@ class NotificationReliabilityTest {
     /** 스케줄러 주기를 n 번 실행. 주기 사이에 비동기 발송/기록이 끝날 시간을 둔다. */
     private void runCycles(int n) {
         for (int i = 0; i < n; i++) {
-            notificationService.checkAndNotify();
+            bookingCheckService.checkAndNotify();
             sleep(300);
         }
     }
