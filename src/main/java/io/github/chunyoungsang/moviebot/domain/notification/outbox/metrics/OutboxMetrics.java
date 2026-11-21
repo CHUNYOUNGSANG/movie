@@ -1,4 +1,7 @@
-package io.github.chunyoungsang.moviebot.domain.notification.outbox;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.metrics;
+
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.repository.NotificationOutboxRepository;
 
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;

@@ -4,7 +4,7 @@ import io.github.chunyoungsang.moviebot.domain.notification.dto.NotificationRegi
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.entity.OutboxStatus;
 
 import java.util.List;
 import java.util.Map;

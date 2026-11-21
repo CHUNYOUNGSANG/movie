@@ -1,4 +1,4 @@
-package io.github.chunyoungsang.moviebot.domain.notification.outbox;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.entity;
 
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import jakarta.persistence.*;
