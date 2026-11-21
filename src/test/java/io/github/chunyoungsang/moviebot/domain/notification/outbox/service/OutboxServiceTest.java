@@ -11,10 +11,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.config.OutboxProperties;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -33,14 +32,14 @@ class OutboxServiceTest {
 
     @Mock private NotificationOutboxRepository outboxRepository;
     @Mock private NotificationHistoryRepository historyRepository;
-    @InjectMocks private OutboxService service;
+    private OutboxService service;
 
     private NotificationOutbox outbox;
 
     @BeforeEach
     void setUp() {
-        ReflectionTestUtils.setField(service, "baseDelayMs", 30_000L);
-        ReflectionTestUtils.setField(service, "maxAttempts", 3);
+        service = new OutboxService(outboxRepository, historyRepository,
+                new OutboxProperties(30_000, Duration.ofHours(1), 3, 10_000, 50, Duration.ofMinutes(5)));
         outbox = NotificationOutbox.builder()
                 .outboxId(1L)
                 .subscription(NotificationSubscription.builder().subscriptionId(10L).build())

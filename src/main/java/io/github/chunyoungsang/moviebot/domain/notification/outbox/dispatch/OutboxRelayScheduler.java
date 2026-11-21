@@ -2,6 +2,7 @@ package io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch;
 
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
 
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.config.OutboxProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -15,10 +16,9 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class OutboxRelayScheduler {
 
-    private static final int BATCH_SIZE = 50;
-
     private final OutboxService outboxService;
     private final NotificationDispatcher dispatcher;
+    private final OutboxProperties properties;
 
     @Scheduled(fixedDelayString = "${notification.outbox.relay-delay-ms:10000}")
     public void relay() {
@@ -26,7 +26,7 @@ public class OutboxRelayScheduler {
         if (released > 0) {
             log.warn("발송 중 멈춘 Outbox {}건을 재시도 대상으로 되돌림", released);
         }
-        for (Long outboxId : outboxService.findDueIds(BATCH_SIZE)) {
+        for (Long outboxId : outboxService.findDueIds(properties.relayBatchSize())) {
             dispatcher.dispatch(outboxId);
         }
     }
