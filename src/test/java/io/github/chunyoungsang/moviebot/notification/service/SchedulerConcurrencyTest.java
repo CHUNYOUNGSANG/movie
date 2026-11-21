@@ -13,7 +13,7 @@ import io.github.chunyoungsang.moviebot.notification.repository.NotificationHist
 import io.github.chunyoungsang.moviebot.notification.repository.NotificationSubscriptionRepository;
 import io.github.chunyoungsang.moviebot.user.entity.User;
 import io.github.chunyoungsang.moviebot.user.repository.UserRepository;
-import io.github.chunyoungsang.moviebot.global.scheduler.MovieCheckScheduler;
+import io.github.chunyoungsang.moviebot.notification.scheduler.MovieCheckScheduler;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

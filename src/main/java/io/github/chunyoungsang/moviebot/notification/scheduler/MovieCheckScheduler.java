@@ -1,4 +1,4 @@
-package io.github.chunyoungsang.moviebot.global.scheduler;
+package io.github.chunyoungsang.moviebot.notification.scheduler;
 
 import io.github.chunyoungsang.moviebot.notification.service.NotificationService;
 import io.micrometer.core.instrument.MeterRegistry;
