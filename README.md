@@ -170,6 +170,22 @@ flowchart LR
 
 👉 상세 정리: 노션 링크 추가 예정
 
+### 패키지 구조 정리 (domain / infra / global + SOLID 점검 + 예외 체계)
+
+패키지 의존 규칙을 ArchUnit 테스트로 먼저 고정해 위반 건수를 잰 뒤, 구조를 옮기고 SOLID 위반을 고쳤습니다.
+
+| 항목 | Before | After |
+|---|---|---|
+| 도메인 간 순환 / 업무 도메인 → telegram / global → 도메인 의존 | 1 / 11 / 3건 | **0 / 0 / 0건** (규칙 6개로 고정) |
+| 봇 명령어 추가 시 수정할 곳 | 2곳 (if/else + 메뉴 목록) | **새 클래스 1개** |
+| 예상하지 못한 오류의 API 응답 | 400 + 내부 메시지 노출 | **500 + 공통 메시지** |
+
+- 비즈니스 도메인(`domain`)과 외부 연동(`infra`: 텔레그램, CGV 크롤러)을 나누고, 포트(`MessageSender`, `MovieCrawler`)는 쓰는 쪽인 도메인에 둠 (DIP)
+- 275줄 봇 클래스를 명령어별 클래스로 나누고, 신청 관리와 예매 확인 서비스를 분리 (SRP, OCP, ISP)
+- 비즈니스 오류를 JDK 예외 대신 `BusinessException` + 도메인별 `ErrorCode` 로 바꿔 `{code, message}` 형식으로 통일
+
+👉 상세 정리: 노션 링크 추가 예정
+
 ## 실행 방법
 
 ```bash
