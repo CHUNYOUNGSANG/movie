@@ -1,4 +1,4 @@
-package io.github.chunyoungsang.moviebot.telegram.service;
+package io.github.chunyoungsang.moviebot.notification.sender;
 
 /**
  * 메시지 발송 실패. 호출자가 실패를 기록하고 재시도 여부를 결정할 수 있도록 던진다.

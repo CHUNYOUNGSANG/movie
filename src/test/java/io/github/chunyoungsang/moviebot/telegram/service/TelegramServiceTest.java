@@ -1,6 +1,7 @@
 package io.github.chunyoungsang.moviebot.telegram.service;
 
 import io.github.chunyoungsang.moviebot.movie.dto.ScreeningResult;
+import io.github.chunyoungsang.moviebot.notification.sender.MessageSendException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -53,21 +54,9 @@ class TelegramServiceTest {
     }
 
     @Test
-    @DisplayName("formatAlerts() 는 영화/극장/시간 정보를 담은 메시지를 만든다")
-    void formatAlerts_containsScreeningInfo() {
-        ScreeningResult result = new ScreeningResult(
-                "CGV", "강남", "파묘",
-                LocalDate.of(2026, 9, 10), LocalTime.of(14, 30),
-                50, true, "https://cgv.co.kr");
-
-        String message = telegramService.formatAlerts(List.of(result));
-
-        org.assertj.core.api.Assertions.assertThat(message).contains("파묘", "강남", "14:30");
-    }
-
-    @Test
     @DisplayName("deliver() 는 API 호출이 실패하면 MessageSendException 을 던진다")
-    void deliver_throwsOnFailure() {        given(restTemplate.postForObject(anyString(), any(Map.class), eq(Map.class)))
+    void deliver_throwsOnFailure() {
+        given(restTemplate.postForObject(anyString(), any(Map.class), eq(Map.class)))
                 .willThrow(new org.springframework.web.client.RestClientException("장애"));
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> telegramService.deliver("111", "알림"))

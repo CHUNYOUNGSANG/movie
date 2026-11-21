@@ -37,7 +37,7 @@ class TelegramPollingServiceTest {
     @Mock private RestTemplate restTemplate;
     @Mock private UserService userService;
     @Mock private NotificationService notificationService;
-    @Mock private MessageSender messageSender;
+    @Mock private TelegramService messageSender;
     @Mock private TelegramOffsetStore offsetStore;
 
     private TelegramPollingService service;

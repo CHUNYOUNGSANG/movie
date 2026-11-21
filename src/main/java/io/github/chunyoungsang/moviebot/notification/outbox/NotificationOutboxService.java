@@ -3,7 +3,7 @@ package io.github.chunyoungsang.moviebot.notification.outbox;
 import io.github.chunyoungsang.moviebot.notification.entity.NotificationHistory;
 import io.github.chunyoungsang.moviebot.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.notification.repository.NotificationHistoryRepository;
-import io.github.chunyoungsang.moviebot.telegram.service.MessageSendException;
+import io.github.chunyoungsang.moviebot.notification.sender.MessageSendException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;

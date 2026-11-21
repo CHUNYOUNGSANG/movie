@@ -54,7 +54,7 @@ class HistoryDeliveryStatusTest {
 
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;
-    @MockitoBean private MessageSender messageSender;
+    @MockitoBean private TelegramService messageSender;   // 봇 답장을 가로채 확인
 
     @Autowired private TelegramPollingService pollingService;
     @Autowired private UserRepository userRepository;

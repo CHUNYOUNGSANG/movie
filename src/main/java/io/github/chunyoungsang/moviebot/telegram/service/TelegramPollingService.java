@@ -29,7 +29,7 @@ public class TelegramPollingService {
     private final RestTemplate restTemplate;
     private final UserService userService;
     private final NotificationService notificationService;
-    private final MessageSender messageSender;   // DIP: 발송은 추상화에만 의존
+    private final TelegramService messageSender;   // 봇 답장 (같은 외부 연동 모듈의 클라이언트)
     private final TelegramOffsetStore offsetStore; // 서버 간 공유 offset (DB)
 
     @Value("${telegram.bot.token}")

@@ -1,6 +1,6 @@
 package io.github.chunyoungsang.moviebot.notification.outbox;
 
-import io.github.chunyoungsang.moviebot.telegram.service.MessageSender;
+import io.github.chunyoungsang.moviebot.notification.sender.MessageSender;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
