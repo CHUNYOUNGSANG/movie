@@ -8,5 +8,10 @@ public enum OutboxStatus {
     /** 발송 완료 */
     SENT,
     /** 재시도 포기 (최대 횟수 초과 또는 영구 실패) */
-    DEAD
+    DEAD;
+
+    /** 끝난 상태 (더 이상 바뀌지 않음) */
+    public boolean isFinished() {
+        return this == SENT || this == DEAD;
+    }
 }
