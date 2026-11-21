@@ -34,6 +34,7 @@ services:
       SPRING_JPA_HIBERNATE_DDL_AUTO: validate
       SPRING_JPA_DATABASE_PLATFORM: org.hibernate.dialect.MySQLDialect
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
       MOVIE_CHECK_CRON: ${MOVIE_CHECK_CRON:-0 */5 * * * *}
       PLAYWRIGHT_BROWSERS_PATH: /playwright-browsers
       TZ: Asia/Seoul
