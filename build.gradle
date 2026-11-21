@@ -34,6 +34,9 @@ dependencies {
     // Web
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 
+    // 인증: 텔레그램 로그인 검증 후 발급한 JWT 로 API 접근 (Spring Security + OAuth2 Resource Server 의 JWT 검증)
+    implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-resource-server'
+
     // 모니터링: 헬스 체크 + Prometheus 형식 지표 (/actuator/health, /actuator/prometheus)
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
@@ -62,6 +65,7 @@ dependencies {
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testImplementation 'org.springframework.security:spring-security-test'
     testCompileOnly 'org.projectlombok:lombok'
     testAnnotationProcessor 'org.projectlombok:lombok'
     // 통합 테스트를 운영과 같은 MySQL 8.4 컨테이너에서 실행
