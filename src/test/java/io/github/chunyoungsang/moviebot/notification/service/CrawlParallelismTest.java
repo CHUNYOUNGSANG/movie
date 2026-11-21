@@ -62,7 +62,7 @@ class CrawlParallelismTest {
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;
 
-    @Autowired private NotificationService notificationService;
+    @Autowired private BookingCheckService bookingCheckService;
     @Autowired private JdbcTemplate jdbcTemplate;
 
     @Autowired private UserRepository userRepository;
@@ -113,7 +113,7 @@ class CrawlParallelismTest {
         });
 
         long start = System.currentTimeMillis();
-        notificationService.checkAndNotify();
+        bookingCheckService.checkAndNotify();
         long elapsed = System.currentTimeMillis() - start;
 
         Integer matched = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notification_outbox", Integer.class);

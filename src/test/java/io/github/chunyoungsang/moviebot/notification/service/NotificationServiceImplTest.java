@@ -40,22 +40,14 @@ class NotificationServiceImplTest {
     @Mock private NotificationSubscriptionRepository notificationSubscriptionRepository;
     @Mock private MovieService movieService;
     @Mock private UserService userService;
-    @Mock private NotificationStateService notificationStateService;
     @Mock private io.github.chunyoungsang.moviebot.notification.outbox.NotificationOutboxService outboxService;
-    @Mock private MovieCrawler cgvCrawler;
 
     private NotificationServiceImpl service;
-    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     @BeforeEach
     void setUp() {
         service = new NotificationServiceImpl(
-                notificationSubscriptionRepository,
-                movieService, userService, notificationStateService, outboxService,
-                List.of(cgvCrawler),
-                Runnable::run,   // 크롤링을 호출 스레드에서 바로 실행 (단위 테스트는 순서/상호작용만 검증)
-                meterRegistry
-        );
+                notificationSubscriptionRepository, movieService, userService, outboxService);
     }
 
     @Nested
@@ -127,72 +119,6 @@ class NotificationServiceImplTest {
             service.cancel(1L, "123");
 
             then(notificationSubscriptionRepository).should().delete(sub);
-        }
-    }
-
-    @Nested
-    @DisplayName("checkAndNotify()")
-    class CheckAndNotify {
-
-        @Test
-        @DisplayName("대기 신청 없으면 크롤러를 호출하지 않는다")
-        void skipsWhenNoPending() {
-            given(notificationStateService.findPending()).willReturn(List.of());
-
-            service.checkAndNotify();
-
-            then(cgvCrawler).shouldHaveNoInteractions();
-        }
-
-        @Test
-        @DisplayName("크롤링 결과를 스케줄로 저장하고, 그룹의 구독 ID 와 함께 매칭 처리를 위임한다")
-        void savesSchedulesAndDelegatesMatching() {
-            NotificationSubscription sub = NotificationSubscription.builder()
-                    .subscriptionId(1L).user(user("123")).movie(movie("스파이더맨"))
-                    .targetDate(LocalDate.of(2026, 9, 4)).build();
-            List<ScreeningResult> results = List.of(screening("스파이더맨"));
-
-            given(notificationStateService.findPending()).willReturn(List.of(sub));
-            given(cgvCrawler.crawl(eq("스파이더맨"), isNull(), any())).willReturn(results);
-
-            service.checkAndNotify();
-
-            then(movieService).should().saveScreenings(results);
-            then(notificationStateService).should().markMatched(List.of(1L), results);
-        }
-
-        @Test
-        @DisplayName("크롤링 결과가 없으면 저장/매칭을 하지 않는다")
-        void skipsWhenNoResults() {
-            NotificationSubscription sub = NotificationSubscription.builder()
-                    .subscriptionId(1L).user(user("123")).movie(movie("스파이더맨"))
-                    .targetDate(LocalDate.of(2026, 9, 4)).build();
-
-            given(notificationStateService.findPending()).willReturn(List.of(sub));
-            given(cgvCrawler.crawl(any(), any(), any())).willReturn(List.of());
-
-            service.checkAndNotify();
-
-            then(movieService).shouldHaveNoInteractions();
-            then(notificationStateService).should(never()).markMatched(any(), any());
-        }
-
-        @Test
-        @DisplayName("크롤링이 실패하면(CrawlException) 저장/매칭을 하지 않고, 결과 없음이 아니라 오류로 기록한다")
-        void recordsCrawlFailureAsError() {
-            NotificationSubscription sub = NotificationSubscription.builder()
-                    .subscriptionId(1L).user(user("123")).movie(movie("스파이더맨"))
-                    .targetDate(LocalDate.of(2026, 9, 4)).build();
-
-            given(notificationStateService.findPending()).willReturn(List.of(sub));
-            given(cgvCrawler.getCinemaName()).willReturn("CGV");
-            given(cgvCrawler.crawl(any(), any(), any())).willThrow(new CrawlException("http_403", "Cloudflare 차단 (테스트)"));
-
-            service.checkAndNotify();   // 예외를 밖으로 던지지 않음
-
-            then(movieService).shouldHaveNoInteractions();
-            assertThat(meterRegistry.get("crawl.duration").tag("outcome", "error").timer().count()).isEqualTo(1);
-            assertThat(meterRegistry.find("crawl.duration").tag("outcome", "empty").timer()).isNull();
         }
     }
 

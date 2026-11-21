@@ -11,7 +11,7 @@ import io.github.chunyoungsang.moviebot.notification.entity.NotificationSubscrip
 import io.github.chunyoungsang.moviebot.notification.outbox.NotificationOutboxRepository;
 import io.github.chunyoungsang.moviebot.notification.repository.NotificationHistoryRepository;
 import io.github.chunyoungsang.moviebot.notification.repository.NotificationSubscriptionRepository;
-import io.github.chunyoungsang.moviebot.notification.service.NotificationService;
+import io.github.chunyoungsang.moviebot.notification.service.BookingCheckService;
 import io.github.chunyoungsang.moviebot.user.entity.User;
 import io.github.chunyoungsang.moviebot.user.repository.UserRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -74,7 +74,7 @@ class MonitoringTest {
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;
 
-    @Autowired private NotificationService notificationService;
+    @Autowired private BookingCheckService bookingCheckService;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private Environment environment;
 
@@ -130,7 +130,7 @@ class MonitoringTest {
                 "{\"ok\":false,\"error_code\":403,\"description\":\"Forbidden: bot was blocked by the user\"}"
                         .getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8));
 
-        notificationService.checkAndNotify();
+        bookingCheckService.checkAndNotify();
         waitUntil(() -> count("SELECT COUNT(*) FROM notification_outbox WHERE status = 'DEAD'") == BLOCKED_USERS);
 
         // 지표(가 있다면)가 DB 상태를 반영할 시간을 준다

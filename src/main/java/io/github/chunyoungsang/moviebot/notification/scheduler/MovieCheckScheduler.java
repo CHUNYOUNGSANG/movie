@@ -1,6 +1,6 @@
 package io.github.chunyoungsang.moviebot.notification.scheduler;
 
-import io.github.chunyoungsang.moviebot.notification.service.NotificationService;
+import io.github.chunyoungsang.moviebot.notification.service.BookingCheckService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class MovieCheckScheduler {
 
-    private final NotificationService notificationService;
+    private final BookingCheckService bookingCheckService;
     private final MeterRegistry meterRegistry;
 
     /**
@@ -32,7 +32,7 @@ public class MovieCheckScheduler {
         Timer.builder("notification.check.duration")
                 .description("예매 확인 한 주기(조회 → 크롤링 → 매칭)의 소요 시간")
                 .register(meterRegistry)
-                .record(notificationService::checkAndNotify);
+                .record(bookingCheckService::checkAndNotify);
         log.info("===== 확인 완료 =====");
     }
 }

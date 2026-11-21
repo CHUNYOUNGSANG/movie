@@ -16,5 +16,4 @@ public interface NotificationService {
     /** 구독 ID → 최신 발송 상태 (Outbox 기준) */
     Map<Long, OutboxStatus> findDeliveryStatuses(List<Long> subscriptionIds);
     void cancel(Long subscriptionId, String chatId);
-    void checkAndNotify();
 }
