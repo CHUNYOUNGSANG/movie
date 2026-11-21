@@ -1,6 +1,9 @@
-package io.github.chunyoungsang.moviebot.domain.notification.outbox;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch;
 
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.NotificationOutboxService.OutboxMessage;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.DeliveryResult;
+
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService.OutboxMessage;
 import io.github.chunyoungsang.moviebot.domain.notification.sender.MessageSendException;
 import io.github.chunyoungsang.moviebot.domain.notification.sender.MessageSender;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -29,7 +32,7 @@ import static org.mockito.Mockito.never;
 @DisplayName("NotificationDispatcher")
 class NotificationDispatcherTest {
 
-    @Mock private NotificationOutboxService outboxService;
+    @Mock private OutboxService outboxService;
     @Mock private MessageSender messageSender;
     @Spy private MeterRegistry meterRegistry = new SimpleMeterRegistry();
     @InjectMocks private NotificationDispatcher dispatcher;

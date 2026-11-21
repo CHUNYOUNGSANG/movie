@@ -4,7 +4,7 @@ import io.github.chunyoungsang.moviebot.domain.notification.dto.NotificationRegi
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.OutboxStatus;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.DeliveryStatus;
 
 import java.util.List;
 import java.util.Map;
@@ -14,6 +14,6 @@ public interface NotificationService {
     List<NotificationSubscription> findAll();
     List<NotificationSubscription> findByUser(User user);
     /** 구독 ID → 최신 발송 상태 (Outbox 기준) */
-    Map<Long, OutboxStatus> findDeliveryStatuses(List<Long> subscriptionIds);
+    Map<Long, DeliveryStatus> findDeliveryStatuses(List<Long> subscriptionIds);
     void cancel(Long subscriptionId, String chatId);
 }

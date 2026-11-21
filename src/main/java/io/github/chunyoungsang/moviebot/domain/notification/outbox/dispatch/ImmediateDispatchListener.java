@@ -1,7 +1,8 @@
-package io.github.chunyoungsang.moviebot.domain.notification.event;
+package io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch;
 
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.NotificationDispatcher;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch.NotificationDispatcher;
 import lombok.RequiredArgsConstructor;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxEnqueuedEvent;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
@@ -14,13 +15,13 @@ import org.springframework.transaction.event.TransactionalEventListener;
  */
 @Component
 @RequiredArgsConstructor
-public class NotificationSendListener {
+public class ImmediateDispatchListener {
 
     private final NotificationDispatcher dispatcher;
 
     @Async("notificationExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void onMatched(NotificationMatchedEvent event) {
+    public void onMatched(OutboxEnqueuedEvent event) {
         dispatcher.dispatch(event.outboxId());
     }
 }

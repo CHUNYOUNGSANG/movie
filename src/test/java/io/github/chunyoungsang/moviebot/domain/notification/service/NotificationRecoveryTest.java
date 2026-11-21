@@ -7,8 +7,8 @@ import io.github.chunyoungsang.moviebot.domain.movie.repository.MovieRepository;
 import io.github.chunyoungsang.moviebot.domain.movie.repository.ScheduleRepository;
 import io.github.chunyoungsang.moviebot.domain.movie.repository.ScreenTypeRepository;
 import io.github.chunyoungsang.moviebot.domain.movie.repository.TheaterRepository;
-import io.github.chunyoungsang.moviebot.domain.notification.event.NotificationSendListener;
-import io.github.chunyoungsang.moviebot.domain.notification.outbox.NotificationOutboxRepository;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch.ImmediateDispatchListener;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.repository.NotificationOutboxRepository;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationHistoryRepository;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationSubscriptionRepository;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
@@ -61,7 +61,7 @@ class NotificationRecoveryTest {
 
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;
-    @MockitoBean private NotificationSendListener sendListener;   // 리스너가 동작하지 못한 상황
+    @MockitoBean private ImmediateDispatchListener sendListener;   // 리스너가 동작하지 못한 상황
 
     @Autowired private BookingCheckService bookingCheckService;
     @Autowired private JdbcTemplate jdbcTemplate;
