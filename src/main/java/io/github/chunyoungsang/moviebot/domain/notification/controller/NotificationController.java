@@ -1,6 +1,7 @@
 package io.github.chunyoungsang.moviebot.domain.notification.controller;
 
 import io.github.chunyoungsang.moviebot.domain.notification.dto.NotificationCreateRequest;
+import io.github.chunyoungsang.moviebot.domain.notification.dto.NotificationResponse;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -26,13 +27,14 @@ public class NotificationController {
     private final NotificationService notificationService;
 
     @PostMapping
-    public ResponseEntity<NotificationSubscription> register(@RequestBody NotificationCreateRequest request,
-                                                             Authentication authentication) {
-        return ResponseEntity.ok(notificationService.register(request.forUser(authentication.getName())));
+    public ResponseEntity<NotificationResponse> register(@RequestBody NotificationCreateRequest request,
+                                                         Authentication authentication) {
+        NotificationSubscription created = notificationService.register(request.forUser(authentication.getName()));
+        return ResponseEntity.ok(NotificationResponse.from(created));
     }
 
     @GetMapping
-    public ResponseEntity<List<NotificationSubscription>> findMine(Authentication authentication) {
+    public ResponseEntity<List<NotificationResponse>> findMine(Authentication authentication) {
         return ResponseEntity.ok(notificationService.findByChatId(authentication.getName()));
     }
 

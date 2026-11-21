@@ -8,6 +8,7 @@ import io.github.chunyoungsang.moviebot.domain.movie.entity.ScreenType;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Theater;
 import io.github.chunyoungsang.moviebot.domain.movie.service.MovieService;
 import io.github.chunyoungsang.moviebot.domain.notification.dto.NotificationRegisterRequest;
+import io.github.chunyoungsang.moviebot.domain.notification.dto.NotificationResponse;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.DeliveryStatus;
@@ -58,10 +59,11 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<NotificationSubscription> findByChatId(String chatId) {
+    public List<NotificationResponse> findByChatId(String chatId) {
         return userService.findByChatId(chatId)
                 .map(notificationSubscriptionRepository::findByUser)
-                .orElse(List.of());
+                .orElse(List.of())
+                .stream().map(NotificationResponse::from).toList();   // 지연 로딩 연관(영화·극장)을 트랜잭션 안에서 읽는다
     }
 
     @Override
