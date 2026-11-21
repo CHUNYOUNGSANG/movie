@@ -9,7 +9,7 @@ import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationS
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationHistoryRepository;
 import io.github.chunyoungsang.moviebot.domain.notification.sender.MessageSendException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
+import io.github.chunyoungsang.moviebot.domain.notification.outbox.config.OutboxProperties;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,21 +30,11 @@ import java.util.Optional;
 @Transactional
 public class OutboxService {
 
-    /** 발송 중(SENDING) 상태로 이 시간 이상 멈춰 있으면 서버 다운으로 보고 되돌린다. */
-    private static final Duration STALE_LOCK = Duration.ofMinutes(5);
     private static final int ERROR_MAX_LENGTH = 500;
 
     private final NotificationOutboxRepository outboxRepository;
     private final NotificationHistoryRepository historyRepository;
-
-    /** 최대 재시도 간격 (지수 백오프 상한) */
-    private static final Duration MAX_DELAY = Duration.ofHours(1);
-
-    @Value("${notification.outbox.base-delay-ms:30000}")
-    private long baseDelayMs;
-
-    @Value("${notification.outbox.max-attempts:5}")
-    private int maxAttempts;
+    private final OutboxProperties properties;
 
     /** 매칭 트랜잭션 안에서 호출된다 (구독 상태 변경과 함께 커밋/롤백). */
     public NotificationOutbox enqueue(NotificationSubscription sub, String message) {
@@ -99,7 +89,7 @@ public class OutboxService {
         outbox.setLockedAt(null);
 
         boolean retryable = !(cause instanceof MessageSendException mse) || mse.isRetryable();
-        if (!retryable || attempts >= maxAttempts) {
+        if (!retryable || attempts >= properties.maxAttempts()) {
             outbox.setStatus(OutboxStatus.DEAD);
             historyRepository.save(NotificationHistory.builder()
                     .subscription(outbox.getSubscription()).status("FAIL").build());
@@ -113,8 +103,8 @@ public class OutboxService {
     /** attempts 회 실패 후 다음 시도까지의 대기 시간 */
     Duration backoff(int attempts) {
         long multiplier = 1L << Math.min(attempts - 1, 20);   // 오버플로 방지
-        Duration delay = Duration.ofMillis(baseDelayMs).multipliedBy(multiplier);
-        return delay.compareTo(MAX_DELAY) > 0 ? MAX_DELAY : delay;
+        Duration delay = Duration.ofMillis(properties.baseDelayMs()).multipliedBy(multiplier);
+        return delay.compareTo(properties.maxDelay()) > 0 ? properties.maxDelay() : delay;
     }
 
     @Transactional(readOnly = true)
@@ -134,7 +124,7 @@ public class OutboxService {
     }
 
     public int releaseStaleLocks() {
-        return outboxRepository.releaseStale(LocalDateTime.now().minus(STALE_LOCK));
+        return outboxRepository.releaseStale(LocalDateTime.now().minus(properties.staleLock()));
     }
 
     private static String truncate(String s) {
