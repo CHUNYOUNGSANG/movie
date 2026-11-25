@@ -50,7 +50,7 @@ class NotificationDispatcherTest {
     @Test
     @DisplayName("발송에 성공하면 SENT 로 기록한다")
     void marksSent() {
-        given(outboxService.claim(1L)).willReturn(Optional.of(new OutboxMessage(1L, "123", "본문")));
+        given(outboxService.claim(1L)).willReturn(Optional.of(new OutboxMessage(1L, "123", "본문", true)));
 
         dispatcher.dispatch(1L);
 
@@ -63,7 +63,7 @@ class NotificationDispatcherTest {
     @Test
     @DisplayName("발송에 실패하면 실패를 기록한다 (예외를 밖으로 던지지 않음)")
     void marksFailed() {
-        given(outboxService.claim(1L)).willReturn(Optional.of(new OutboxMessage(1L, "123", "본문")));
+        given(outboxService.claim(1L)).willReturn(Optional.of(new OutboxMessage(1L, "123", "본문", true)));
         MessageSendException error = new MessageSendException("장애", null);
         willThrow(error).given(messageSender).deliver(anyString(), anyString());
         given(outboxService.markFailed(1L, error)).willReturn(DeliveryResult.DEAD);
@@ -74,6 +74,19 @@ class NotificationDispatcherTest {
         then(outboxService).should(never()).markSent(anyLong());
         assertThat(deliveries("dead")).as("실패 처리 결과가 지표 태그로 기록됨").isEqualTo(1);
         assertThat(meterRegistry.find("notification.delivery").tag("result", "sent").timer()).isNull();
+    }
+
+    @Test
+    @DisplayName("선점했을 때 받는 사람이 구독을 해제했으면 보내지 않고 CANCELED 로 끝낸다 (실패로 기록하지 않음)")
+    void cancelsWhenRecipientInactive() {
+        given(outboxService.claim(1L)).willReturn(Optional.of(new OutboxMessage(1L, "123", "본문", false)));
+
+        dispatcher.dispatch(1L);
+
+        then(messageSender).shouldHaveNoInteractions();
+        then(outboxService).should().cancel(eq(1L), anyString());
+        then(outboxService).should(never()).markFailed(anyLong(), any());
+        assertThat(deliveries("canceled")).isEqualTo(1);
     }
 
     private long deliveries(String result) {
