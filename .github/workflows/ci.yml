@@ -44,3 +44,47 @@ jobs:
           name: test-reports
           path: build/reports/tests/test
           retention-days: 7
+
+      # JaCoCo 커버리지를 실행 요약(Job summary)에 남기고 HTML 리포트를 보관
+      - name: Coverage summary
+        if: always()
+        run: |
+          f=build/reports/jacoco/test/jacocoTestReport.xml
+          [ -f "$f" ] || exit 0
+          python3 - "$f" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.argv[1]).getroot()
+          rows = {c.get('type'): c for c in root.findall('counter')}
+          print('### 테스트 커버리지 (JaCoCo)')
+          print('| 기준 | 커버리지 |')
+          print('|---|---|')
+          for t, name in [('LINE', '라인'), ('BRANCH', '분기'), ('METHOD', '메서드')]:
+              c = rows[t]; covered, missed = int(c.get('covered')), int(c.get('missed'))
+              print(f'| {name} | {covered / (covered + missed) * 100:.1f}% ({covered}/{covered + missed}) |')
+          PY
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: build/reports/jacoco/test/html
+          retention-days: 7
+
+  # Dockerfile 이 깨지지 않았는지 이미지 빌드만 확인 (푸시하지 않음)
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: moviebot:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

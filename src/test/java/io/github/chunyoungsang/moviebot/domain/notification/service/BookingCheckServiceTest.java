@@ -157,6 +157,17 @@ class BookingCheckServiceTest {
         }
 
         @Test
+        @DisplayName("종료 신호를 받은 뒤에는 새 주기를 시작하지 않는다")
+        void skipsCycleAfterShutdown() {
+            service.onShutdown();
+
+            service.checkAndNotify();
+
+            then(notificationStateService).shouldHaveNoInteractions();
+            then(cgvCrawler).shouldHaveNoInteractions();
+        }
+
+        @Test
         @DisplayName("제한 시간 안에 끝나면 지표를 남기지 않는다")
         void noTimeoutWhenFast() {
             given(notificationStateService.findPendingGroups()).willReturn(List.of(
