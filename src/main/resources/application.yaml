@@ -27,6 +27,10 @@ spring:
     scheduling:
       pool:
         size: 5
+  # 종료 시 스케줄러·크롤링 스레드풀은 Spring 이 일시 정지하고 실행 중인 작업(크롤링 주기, 크롤링)이 끝나기를 기다린다 (Spring 6.1+).
+  # spring.task.scheduling.shutdown.await-termination 을 켜면 일시 정지된 스레드를 한 번 더 기다려 매 종료가 40초씩 늘어나므로 쓰지 않는다
+  lifecycle:
+    timeout-per-shutdown-phase: 40s   # 종료 단계별 최대 대기 (docker-compose stop_grace_period 60s 보다 짧게)
 
 # ── 텔레그램 봇 ─────────────────────────────────────────────
 # @BotFather → /newbot 으로 토큰 발급 후 TELEGRAM_BOT_TOKEN 환경변수로 주입
@@ -63,6 +67,13 @@ notification:
     relay-delay-ms: 10000   # 미발송/재시도 대상 확인 주기
     base-delay-ms: 30000    # 재시도 대기 시작값 (30초 → 1분 → 2분 → 4분, 지수 백오프)
     max-attempts: 5         # 최대 발송 시도 횟수 (초과 시 DEAD)
+
+# ── 종료 (배포, docker stop) ─────────────────────────────────
+# 진행 중인 HTTP 요청과 스케줄 작업(크롤링 주기)이 끝날 때까지 기다린 뒤 종료 (단계별 최대 대기는 spring.lifecycle).
+# 크롤링 주기는 종료 신호를 받으면 남은 크롤링을 시작하지 않고 곧바로 끝나므로(BookingCheckService.onShutdown)
+# 대기 시간은 실행 중인 크롤링 하나(요청 제한 시간) 정도
+server:
+  shutdown: graceful
 
 # ── 데이터 보관 ──────────────────────────────────────────────
 # 보관 기간이 지난 데이터를 매일 새벽 배치로 나눠 삭제 (DataRetentionService)
