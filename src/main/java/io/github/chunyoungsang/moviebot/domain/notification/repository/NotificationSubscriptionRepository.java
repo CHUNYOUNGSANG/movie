@@ -8,14 +8,21 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
 public interface NotificationSubscriptionRepository extends JpaRepository<NotificationSubscription, Long> {
 
-    /** 아직 매칭되지 않은 신청 중 구독 중인(active) 사용자의 것만. /stop 하거나 봇을 차단한 사용자는 크롤링하지 않는다 */
+    /**
+     * 크롤링 대상: 아직 매칭되지 않았고, 구독 중인(active) 사용자의 것이며, 상영일이 오늘 이후인 신청.
+     * - /stop 하거나 봇을 차단한 사용자는 크롤링하지 않는다
+     * - 상영일이 지난 신청은 예매가 열릴 일이 없으므로 크롤링하지 않는다
+     */
     @EntityGraph(attributePaths = {"movie", "theater", "screenType", "user"})
-    List<NotificationSubscription> findAllByTriggeredFalseAndUserActiveTrue();
+    @Query("select s from NotificationSubscription s " +
+           "where s.triggered = false and s.user.active = true and s.targetDate >= :today")
+    List<NotificationSubscription> findPending(@Param("today") LocalDate today);
 
     @EntityGraph(attributePaths = {"movie", "theater", "screenType"})
     List<NotificationSubscription> findByUser(User user);
