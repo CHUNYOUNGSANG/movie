@@ -6,7 +6,8 @@ COPY gradlew ./
 COPY gradle/ gradle/
 RUN chmod +x gradlew
 
-COPY build.gradle settings.gradle ./
+# lombok.config 도 함께: @RequiredArgsConstructor 가 필드의 @Qualifier·@Value 를 생성자에 복사하는 설정 (없으면 앱이 시작되지 않음)
+COPY build.gradle settings.gradle lombok.config ./
 RUN ./gradlew dependencies --no-daemon || true
 
 COPY src/ src/
