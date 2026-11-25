@@ -16,6 +16,7 @@ import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import io.github.chunyoungsang.moviebot.domain.user.repository.UserRepository;
 import io.github.chunyoungsang.moviebot.domain.user.service.UserService;
 import io.github.chunyoungsang.moviebot.support.MySqlTestContainer;
+import io.github.chunyoungsang.moviebot.support.TestDates;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -67,7 +68,7 @@ class InactiveUserAlertTest {
         MySqlTestContainer.registerFreshDatabase(registry);   // 테스트 클래스마다 독립된 DB
     }
 
-    private static final LocalDate TARGET_DATE = LocalDate.of(2026, 12, 24);
+    private static final LocalDate TARGET_DATE = TestDates.future();
 
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;
