@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,6 +30,20 @@ public interface NotificationSubscriptionRepository extends JpaRepository<Notifi
 
     @EntityGraph(attributePaths = {"movie", "theater", "screenType"})
     List<NotificationSubscription> findByUser(User user);
+
+    /** 만료 대상: 매칭되지 않은 채 상영일이 지났고 아직 만료 처리하지 않은 신청 */
+    @EntityGraph(attributePaths = {"movie", "theater", "screenType", "user"})
+    @Query("select s from NotificationSubscription s " +
+           "where s.triggered = false and s.expiredAt is null and s.targetDate < :today")
+    List<NotificationSubscription> findExpirable(@Param("today") LocalDate today);
+
+    /**
+     * 만료 선점. 그 사이 매칭되거나 이미 만료 처리됐으면 0 (안내가 두 번 가지 않도록 조건부 UPDATE)
+     */
+    @Modifying
+    @Query("update NotificationSubscription s set s.expiredAt = :now " +
+           "where s.subscriptionId = :id and s.triggered = false and s.expiredAt is null")
+    int claimExpired(@Param("id") Long subscriptionId, @Param("now") LocalDateTime now);
 
     /**
      * 같은 조건(영화·지점·상영관·날짜)의 대기 중인 신청이 있는지. 지점·상영관이 null(전체)이면 null 끼리 같은 조건으로 본다.

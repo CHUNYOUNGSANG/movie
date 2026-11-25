@@ -166,6 +166,21 @@ class TelegramBotTest {
         }
 
         @Test
+        @DisplayName("/list는 상영일이 지나 만료된 신청을 보여주지 않는다")
+        void list_hidesExpired() {
+            User user = User.builder().chatId("111").build();
+            NotificationSubscription expired = subscription(2L, "파묘", false);
+            expired.setExpiredAt(java.time.LocalDateTime.now());
+            given(userService.findByChatId("111")).willReturn(Optional.of(user));
+            given(notificationService.findByUser(user)).willReturn(List.of(subscription(1L, "스파이더맨", false), expired));
+
+            service.processUpdate(update("111", "chun", "/list"));
+
+            then(messageSender).should().sendMessage(eq("111"),
+                    argThat(text -> text.contains("스파이더맨") && !text.contains("파묘")));
+        }
+
+        @Test
         @DisplayName("/history는 완료된 구독만 보여준다")
         void history_showsOnlyTriggered() {
             User user = User.builder().chatId("111").build();

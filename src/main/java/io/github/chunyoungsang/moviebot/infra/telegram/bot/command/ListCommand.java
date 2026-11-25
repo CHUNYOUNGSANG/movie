@@ -23,7 +23,7 @@ public class ListCommand extends SubscriptionListCommand {
 
     @Override
     protected boolean includes(NotificationSubscription subscription) {
-        return !subscription.isTriggered();
+        return !subscription.isTriggered() && !subscription.isExpired();   // 대기 중인 것만 (만료된 신청 제외)
     }
 
     @Override
