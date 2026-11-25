@@ -51,7 +51,8 @@ class BookingCheckServiceTest {
                 notificationStateService, movieService,
                 List.of(cgvCrawler),
                 Runnable::run,   // 크롤링을 호출 스레드에서 바로 실행 (단위 테스트는 순서/상호작용만 검증)
-                meterRegistry
+                meterRegistry,
+                java.time.Duration.ofMinutes(8)
         );
     }
 
@@ -112,6 +113,59 @@ class BookingCheckServiceTest {
             then(movieService).shouldHaveNoInteractions();
             assertThat(meterRegistry.get("crawl.duration").tag("outcome", "error").timer().count()).isEqualTo(1);
             assertThat(meterRegistry.find("crawl.duration").tag("outcome", "empty").timer()).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("주기 제한 시간")
+    class CycleTimeout {
+
+        @Test
+        @DisplayName("제한 시간까지 끝나지 않은 크롤링은 기다리지 않고 취소하며, crawl.cycle.timeout 을 센다")
+        void stopsWaitingAtTimeout() {
+            java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor();
+            java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+            try {
+                BookingCheckService timed = new BookingCheckService(notificationStateService, movieService,
+                        List.of(cgvCrawler), pool, meterRegistry, java.time.Duration.ofMillis(100));
+                given(notificationStateService.findPendingGroups()).willReturn(List.of(
+                        new PendingGroup("A", "A", null, LocalDate.of(2026, 9, 4)),
+                        new PendingGroup("B", "B", null, LocalDate.of(2026, 9, 4))));
+                given(cgvCrawler.crawl(any(), any(), any())).willAnswer(i -> {
+                    release.await();   // 응답하지 않는 CGV
+                    return List.of(screening("A"));
+                });
+
+                long started = System.nanoTime();
+                timed.checkAndNotify();
+                long elapsedMs = (System.nanoTime() - started) / 1_000_000;
+
+                assertThat(elapsedMs).isLessThan(1_000);
+                assertThat(meterRegistry.counter("crawl.cycle.timeout").count()).isEqualTo(1);
+                release.countDown();   // 늦게 끝난 결과는 버린다
+                pool.shutdown();
+                assertThat(pool.awaitTermination(1, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                then(cgvCrawler).should(org.mockito.Mockito.times(1)).crawl(any(), any(), any());   // 큐에 있던 두 번째는 시작하지 않음
+                then(movieService).shouldHaveNoInteractions();
+                then(notificationStateService).should(never()).markMatched(any(PendingGroup.class), any());
+            } catch (InterruptedException e) {
+                throw new IllegalStateException(e);
+            } finally {
+                release.countDown();
+                pool.shutdownNow();
+            }
+        }
+
+        @Test
+        @DisplayName("제한 시간 안에 끝나면 지표를 남기지 않는다")
+        void noTimeoutWhenFast() {
+            given(notificationStateService.findPendingGroups()).willReturn(List.of(
+                    new PendingGroup("A", "A", null, LocalDate.of(2026, 9, 4))));
+            given(cgvCrawler.crawl(any(), any(), any())).willReturn(List.of());
+
+            service.checkAndNotify();
+
+            assertThat(meterRegistry.find("crawl.cycle.timeout").counter()).isNull();
         }
     }
 
