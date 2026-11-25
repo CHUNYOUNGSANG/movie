@@ -52,7 +52,13 @@ public class OutboxService {
             return Optional.empty();
         }
         return outboxRepository.findById(outboxId)
-                .map(o -> new OutboxMessage(o.getOutboxId(), o.getChatId(), o.getMessage()));
+                .map(o -> new OutboxMessage(o.getOutboxId(), o.getChatId(), o.getMessage(),
+                        o.getSubscription().getUser().isActive()));
+    }
+
+    /** 선점한 Outbox 를 보내지 않고 끝낸다 (받는 사람이 구독을 해제함). 실패가 아니므로 FAIL 이력을 남기지 않는다 */
+    public void cancel(Long outboxId, String reason) {
+        outboxRepository.findById(outboxId).orElseThrow().cancel(reason);
     }
 
     public void markSent(Long outboxId) {
@@ -106,7 +112,10 @@ public class OutboxService {
     }
 
 
-    /** 발송에 필요한 값만 담은 스냅샷 (트랜잭션 밖으로 엔티티를 넘기지 않기 위함) */
-    public record OutboxMessage(Long outboxId, String chatId, String message) {
+    /**
+     * 발송에 필요한 값만 담은 스냅샷 (트랜잭션 밖으로 엔티티를 넘기지 않기 위함)
+     * @param recipientActive 선점 시점에 받는 사람이 구독 중인지. 재시도를 기다리는 동안 /stop 했을 수 있다
+     */
+    public record OutboxMessage(Long outboxId, String chatId, String message, boolean recipientActive) {
     }
 }

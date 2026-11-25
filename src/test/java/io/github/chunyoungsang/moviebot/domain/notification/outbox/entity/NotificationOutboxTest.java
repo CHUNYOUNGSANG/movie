@@ -68,15 +68,29 @@ class NotificationOutboxTest {
         assertThat(outbox.getLastError()).hasSize(NotificationOutbox.ERROR_MAX_LENGTH);
     }
 
+    @Test
+    @DisplayName("cancel: CANCELED, 시도 횟수는 그대로 (보내지 않았으므로)")
+    void cancel() {
+        NotificationOutbox outbox = sending();
+
+        outbox.cancel("받는 사람이 구독하지 않음");
+
+        assertThat(outbox.getStatus()).isEqualTo(OutboxStatus.CANCELED);
+        assertThat(outbox.getStatus().isFinished()).isTrue();
+        assertThat(outbox.getAttemptCount()).isEqualTo(1);
+        assertThat(outbox.getLockedAt()).isNull();
+    }
+
     @ParameterizedTest
-    @EnumSource(value = OutboxStatus.class, names = {"SENT", "DEAD"})
-    @DisplayName("끝난 상태(SENT, DEAD)는 다시 바꿀 수 없다")
+    @EnumSource(value = OutboxStatus.class, names = {"SENT", "DEAD", "CANCELED"})
+    @DisplayName("끝난 상태(SENT, DEAD, CANCELED)는 다시 바꿀 수 없다")
     void finishedStatesAreFinal(OutboxStatus finished) {
         NotificationOutbox outbox = NotificationOutbox.builder().outboxId(1L).status(finished).build();
 
         assertThatThrownBy(outbox::markSent).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> outbox.scheduleRetry(1, NOW, "e")).isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> outbox.giveUp(1, "e")).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> outbox.cancel("e")).isInstanceOf(IllegalStateException.class);
         assertThat(outbox.getStatus()).isEqualTo(finished);
     }
 

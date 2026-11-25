@@ -13,8 +13,9 @@ import java.util.Optional;
 
 public interface NotificationSubscriptionRepository extends JpaRepository<NotificationSubscription, Long> {
 
+    /** 아직 매칭되지 않은 신청 중 구독 중인(active) 사용자의 것만. /stop 하거나 봇을 차단한 사용자는 크롤링하지 않는다 */
     @EntityGraph(attributePaths = {"movie", "theater", "screenType", "user"})
-    List<NotificationSubscription> findAllByTriggeredFalse();
+    List<NotificationSubscription> findAllByTriggeredFalseAndUserActiveTrue();
 
     @EntityGraph(attributePaths = {"movie", "theater", "screenType"})
     List<NotificationSubscription> findByUser(User user);

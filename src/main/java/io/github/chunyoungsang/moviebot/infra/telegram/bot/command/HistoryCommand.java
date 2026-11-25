@@ -48,6 +48,7 @@ public class HistoryCommand extends SubscriptionListCommand {
             case DELIVERED -> "✅ ";
             case IN_PROGRESS -> "⏳ 발송 중 ";
             case FAILED -> "❌ 발송 실패 ";
+            case CANCELED -> "🔕 구독 해제로 미발송 ";
         };
     }
 }
