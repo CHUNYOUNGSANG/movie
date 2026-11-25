@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -23,16 +25,17 @@ public class NotificationStateService {
     private final NotificationSubscriptionRepository subscriptionRepository;
     private final OutboxService outboxService;
     private final AlertMessageFormatter alertMessageFormatter;
+    private final Clock clock;
 
     /**
-     * 미발송 구독 조회 (구독 중인 사용자만).
+     * 크롤링 대상 구독 조회 (미발송, 구독 중인 사용자, 상영일이 오늘 이후).
      * 인터페이스에 선언한 쿼리 메서드는 Spring Data 가 트랜잭션을 걸지 않으므로,
      * 트랜잭션 밖에서 직접 호출하면 EntityManager 가 호출자 범위가 끝날 때까지 커넥션을 쥐고 있게 된다.
      * 명시적인 읽기 전용 트랜잭션으로 감싸 조회 직후 커넥션을 반납한다.
      */
     @Transactional(readOnly = true)
     public List<NotificationSubscription> findPending() {
-        return subscriptionRepository.findAllByTriggeredFalseAndUserActiveTrue();
+        return subscriptionRepository.findPending(LocalDate.now(clock));
     }
 
     /**

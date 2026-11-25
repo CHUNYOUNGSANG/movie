@@ -50,10 +50,15 @@ class NotificationServiceImplTest {
 
     private NotificationServiceImpl service;
 
+    /** 2026-12-24 10:00 (서울) 로 고정 */
+    private static final java.time.Clock CLOCK = java.time.Clock.fixed(
+            java.time.Instant.parse("2026-12-24T01:00:00Z"), java.time.ZoneId.of("Asia/Seoul"));
+    private static final LocalDate TODAY = LocalDate.of(2026, 12, 24);
+
     @BeforeEach
     void setUp() {
         service = new NotificationServiceImpl(
-                notificationSubscriptionRepository, movieService, userService, outboxService);
+                notificationSubscriptionRepository, movieService, userService, outboxService, CLOCK);
     }
 
     @Nested
@@ -67,7 +72,7 @@ class NotificationServiceImplTest {
                     .willThrow(new BusinessException(UserErrorCode.USER_NOT_FOUND));
 
             assertThatThrownBy(() -> service.register(new NotificationRegisterRequest(
-                    "unknown", "스파이더맨", "CGV", "영등포", "IMAX", LocalDate.now()
+                    "unknown", "스파이더맨", "CGV", "영등포", "IMAX", TODAY
             ))).isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode()).isEqualTo(UserErrorCode.USER_NOT_FOUND);
         }
@@ -84,9 +89,58 @@ class NotificationServiceImplTest {
             given(notificationSubscriptionRepository.save(any())).willAnswer(i -> i.getArgument(0));
 
             service.register(new NotificationRegisterRequest(
-                    "111", "스파이더맨", "CGV", "영등포", "IMAX", LocalDate.now()));
+                    "111", "스파이더맨", "CGV", "영등포", "IMAX", TODAY));
 
             then(notificationSubscriptionRepository).should().save(any());
+        }
+
+        @Test
+        @DisplayName("오늘 날짜는 받고, 어제 날짜는 TARGET_DATE_PAST (서울 기준 날짜 경계)")
+        void rejectsPastDate() {
+            assertThatThrownBy(() -> service.register(new NotificationRegisterRequest(
+                    "111", "스파이더맨", "CGV", null, null, TODAY.minusDays(1))))
+                    .extracting(e -> ((BusinessException) e).getErrorCode()).isEqualTo(NotificationErrorCode.TARGET_DATE_PAST);
+            then(userService).shouldHaveNoInteractions();   // 사용자 조회 전에 거른다
+        }
+
+        @Test
+        @DisplayName("제목이 비었거나 100자를 넘거나 날짜가 없으면 INVALID_SUBSCRIPTION_REQUEST")
+        void rejectsInvalidInput() {
+            for (NotificationRegisterRequest bad : java.util.List.of(
+                    new NotificationRegisterRequest("111", " ", "CGV", null, null, TODAY),
+                    new NotificationRegisterRequest("111", null, "CGV", null, null, TODAY),
+                    new NotificationRegisterRequest("111", "가".repeat(101), "CGV", null, null, TODAY),
+                    new NotificationRegisterRequest("111", "스파이더맨", "CGV", null, null, null))) {
+                assertThatThrownBy(() -> service.register(bad))
+                        .extracting(e -> ((BusinessException) e).getErrorCode())
+                        .isEqualTo(NotificationErrorCode.INVALID_SUBSCRIPTION_REQUEST);
+            }
+            then(notificationSubscriptionRepository).should(never()).save(any());
+        }
+
+        @Test
+        @DisplayName("제목 앞뒤 공백은 지우고 저장한다 (같은 영화가 공백 때문에 따로 생기지 않게)")
+        void stripsTitle() {
+            given(userService.getByChatIdOrThrow("111")).willReturn(user("111"));
+            given(movieService.findOrCreateMovie("스파이더맨")).willReturn(movie("스파이더맨"));
+            given(notificationSubscriptionRepository.save(any())).willAnswer(i -> i.getArgument(0));
+
+            service.register(new NotificationRegisterRequest("111", "  스파이더맨 ", "CGV", null, null, TODAY));
+
+            then(movieService).should().findOrCreateMovie("스파이더맨");
+        }
+
+        @Test
+        @DisplayName("같은 조건의 대기 중인 신청이 있으면 DUPLICATE_SUBSCRIPTION, 저장하지 않는다")
+        void rejectsDuplicate() {
+            given(userService.getByChatIdOrThrow("111")).willReturn(user("111"));
+            given(movieService.findOrCreateMovie("스파이더맨")).willReturn(movie("스파이더맨"));
+            given(notificationSubscriptionRepository.existsPendingDuplicate(any(), any(), any(), any(), any())).willReturn(true);
+
+            assertThatThrownBy(() -> service.register(new NotificationRegisterRequest(
+                    "111", "스파이더맨", "CGV", null, null, TODAY)))
+                    .extracting(e -> ((BusinessException) e).getErrorCode()).isEqualTo(NotificationErrorCode.DUPLICATE_SUBSCRIPTION);
+            then(notificationSubscriptionRepository).should(never()).save(any());
         }
     }
 

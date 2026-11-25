@@ -44,6 +44,13 @@ public class NotificationSubscription {
     @CreationTimestamp
     private LocalDateTime createdAt;
 
+    /** 상영일이 지나도록 예매가 열리지 않아 만료 처리한 시각. null 이면 만료되지 않음 */
+    private LocalDateTime expiredAt;
+
+    public boolean isExpired() {
+        return expiredAt != null;
+    }
+
     /** SRP: 매칭 판단은 자신이 가장 잘 안다. */
     public boolean matches(io.github.chunyoungsang.moviebot.domain.movie.dto.ScreeningResult result) {
         if (theater != null && !result.theater().contains(theater.getBranchName())) return false;

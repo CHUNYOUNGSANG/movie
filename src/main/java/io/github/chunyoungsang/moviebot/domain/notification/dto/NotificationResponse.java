@@ -19,6 +19,7 @@ public record NotificationResponse(
         String screenType,     // null = 전체 관
         LocalDate targetDate,
         boolean triggered,
+        boolean expired,       // 상영일이 지나도록 예매가 열리지 않아 종료됨
         LocalDateTime createdAt
 ) {
 
@@ -31,6 +32,7 @@ public record NotificationResponse(
                 sub.getScreenType() == null ? null : sub.getScreenType().getTypeName(),
                 sub.getTargetDate(),
                 sub.isTriggered(),
+                sub.isExpired(),
                 sub.getCreatedAt());
     }
 }

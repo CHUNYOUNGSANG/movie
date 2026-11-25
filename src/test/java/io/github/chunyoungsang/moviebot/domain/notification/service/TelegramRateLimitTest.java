@@ -27,6 +27,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import io.github.chunyoungsang.moviebot.support.MySqlTestContainer;
+import io.github.chunyoungsang.moviebot.support.TestDates;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -64,7 +65,7 @@ class TelegramRateLimitTest {
         MySqlTestContainer.registerFreshDatabase(registry);   // 테스트 클래스마다 독립된 DB
     }
 
-    private static final LocalDate TARGET_DATE = LocalDate.of(2026, 12, 24);
+    private static final LocalDate TARGET_DATE = TestDates.future();
     private static final int USERS = 100;
 
     @MockitoBean private RestTemplate restTemplate;

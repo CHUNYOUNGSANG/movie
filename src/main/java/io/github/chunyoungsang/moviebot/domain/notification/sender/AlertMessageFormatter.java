@@ -1,5 +1,6 @@
 package io.github.chunyoungsang.moviebot.domain.notification.sender;
 
+import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.movie.dto.ScreeningResult;
 import org.springframework.stereotype.Component;
 
@@ -41,5 +42,16 @@ public class AlertMessageFormatter {
 
         sb.append("\n👉 <a href=\"").append(first.bookingUrl()).append("\">예매하기</a>");
         return sb.toString();
+    }
+
+    /** 상영일이 지나도록 예매가 열리지 않아 신청을 마쳤다는 안내 */
+    public String formatExpired(NotificationSubscription sub) {
+        return "⌛ <b>알림 신청이 종료됐어요</b>\n\n"
+                + "상영일까지 예매가 열리지 않았습니다.\n\n"
+                + "영화: <b>" + sub.getMovie().getTitle() + "</b>\n"
+                + "날짜: " + sub.getTargetDate() + "\n"
+                + "지점: " + (sub.getTheater() != null ? sub.getTheater().getBranchName() : "전체 지점") + "\n"
+                + "관종류: " + (sub.getScreenType() != null ? sub.getScreenType().getTypeName() : "전체 관") + "\n\n"
+                + "다른 날짜로 받으시려면 /add 로 다시 신청해주세요.";
     }
 }
