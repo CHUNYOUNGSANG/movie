@@ -51,6 +51,8 @@ auth:
 movie:
   check:
     cron: "0 */5 * * * *"
+  crawl:
+    cycle-timeout: PT8M   # 주기 전체 제한 시간 (ShedLock lockAtMostFor 10분보다 짧게). 넘기면 남은 크롤링은 다음 주기로
 
 # ── 알림 (신청 만료, Outbox) ─────────────────────────────────
 notification:
