@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Types;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -93,6 +94,12 @@ public class MovieServiceImpl implements MovieService {
             ps.setBoolean(6, r.bookingOpen());
             ps.setObject(7, crawledAt, Types.TIMESTAMP);
         });
+    }
+
+    @Override
+    public int deleteSchedulesShownBefore(LocalDate cutoff, int limit) {
+        // MySQL DELETE ... LIMIT: 한 번에 지우는(잠그는) 행 수를 제한한다. show_date 인덱스로 범위만 읽는다
+        return jdbcTemplate.update("DELETE FROM schedules WHERE show_date < ? LIMIT ?", cutoff, limit);
     }
 
     // ── private ───────────────────────────────────────────────

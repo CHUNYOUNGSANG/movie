@@ -56,6 +56,17 @@ public class OutboxService {
                         o.getSubscription().getUser().isActive()));
     }
 
+    /**
+     * 보관 기간이 지난 신청의 Outbox 와 발송 이력을 지운다 (호출한 쪽의 트랜잭션에 합류, 신청 삭제와 함께 커밋).
+     * 신청보다 먼저 지워야 FK 위반이 없다. 발송 중인 건은 호출하는 쪽이 대상에서 뺀다.
+     *
+     * @return 지운 Outbox 건수
+     */
+    public int deleteBySubscriptionIds(List<Long> subscriptionIds) {
+        historyRepository.deleteBySubscriptionIds(subscriptionIds);
+        return outboxRepository.deleteBySubscriptionIds(subscriptionIds);
+    }
+
     /** 선점한 Outbox 를 보내지 않고 끝낸다 (받는 사람이 구독을 해제함). 실패가 아니므로 FAIL 이력을 남기지 않는다 */
     public void cancel(Long outboxId, String reason) {
         outboxRepository.findById(outboxId).orElseThrow().cancel(reason);
