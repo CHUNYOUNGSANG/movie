@@ -14,6 +14,11 @@ import java.util.List;
 
 public interface NotificationOutboxRepository extends JpaRepository<NotificationOutbox, Long> {
 
+    /** 보관 기간이 지난 신청과 함께 지울 Outbox (신청 삭제 전에 지워야 FK 위반이 없다) */
+    @Modifying
+    @Query("delete from NotificationOutbox o where o.subscription.subscriptionId in :subscriptionIds")
+    int deleteBySubscriptionIds(@Param("subscriptionIds") List<Long> subscriptionIds);
+
     /**
      * 발송 선점. PENDING 이고 발송 시각이 된 건만 SENDING 으로 바꾼다.
      * 리스너와 relay 가 같은 건을 동시에 집어도 조건부 UPDATE 이므로 한쪽만 1을 받는다.
