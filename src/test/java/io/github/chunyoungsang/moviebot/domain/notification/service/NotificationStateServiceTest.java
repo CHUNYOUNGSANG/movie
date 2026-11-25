@@ -81,6 +81,20 @@ class NotificationStateServiceTest {
 
             service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
 
+            then(outboxService).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("크롤링하는 동안 사용자가 구독을 해제(/stop)했으면 선점하지 않고 Outbox 도 만들지 않는다")
+        void skipsWhenUserStoppedDuringCrawl() {
+            NotificationSubscription sub = subscription(1L, "123", null);
+            sub.getUser().setActive(false);
+            given(subscriptionRepository.findAllBySubscriptionIdIn(List.of(1L))).willReturn(List.of(sub));
+
+            service.markMatched(List.of(1L), List.of(screening("CGV 강남")));
+
+            then(subscriptionRepository).should(never()).claimTriggered(any());
+            then(outboxService).shouldHaveNoInteractions();
         }
 
         @Test
