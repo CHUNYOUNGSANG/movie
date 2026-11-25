@@ -42,6 +42,21 @@ public interface NotificationSubscriptionRepository extends JpaRepository<Notifi
     @EntityGraph(attributePaths = {"movie", "theater", "screenType"})
     List<NotificationSubscription> findByUser(User user);
 
+    /**
+     * 보관 기간이 지난 끝난 신청 ID: 상영일이 기준일 이전이고 매칭됐거나 만료됐으며, 발송 중인 Outbox 가 없는 것.
+     * (아직 만료 처리 전인 신청은 안내가 나간 뒤 지운다. outbox 엔티티를 직접 참조하지 않도록 네이티브 쿼리)
+     */
+    @Query(value = """
+            SELECT s.subscription_id FROM notification_subscriptions s
+             WHERE s.target_date < :cutoff
+               AND (s.is_triggered = TRUE OR s.expired_at IS NOT NULL)
+               AND NOT EXISTS (SELECT 1 FROM notification_outbox o
+                                WHERE o.subscription_id = s.subscription_id
+                                  AND o.status IN ('PENDING', 'SENDING'))
+             LIMIT :limit
+            """, nativeQuery = true)
+    List<Long> findPurgeableIds(@Param("cutoff") LocalDate cutoff, @Param("limit") int limit);
+
     /** 만료 대상: 매칭되지 않은 채 상영일이 지났고 아직 만료 처리하지 않은 신청 */
     @EntityGraph(attributePaths = {"movie", "theater", "screenType", "user"})
     @Query("select s from NotificationSubscription s " +
