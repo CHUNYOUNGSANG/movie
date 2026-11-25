@@ -1,6 +1,7 @@
 package io.github.chunyoungsang.moviebot.domain.notification.service;
 
 import io.github.chunyoungsang.moviebot.domain.movie.dto.ScreeningResult;
+import io.github.chunyoungsang.moviebot.domain.notification.dto.PendingGroup;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationSubscriptionRepository;
@@ -28,14 +29,22 @@ public class NotificationStateService {
     private final Clock clock;
 
     /**
-     * 크롤링 대상 구독 조회 (미발송, 구독 중인 사용자, 상영일이 오늘 이후).
+     * 크롤링 대상 그룹 조회 (미발송, 구독 중인 사용자, 상영일이 오늘 이후).
+     * 신청 엔티티가 아니라 영화|지점|날짜 조합만 읽는다: 대기 신청이 수만 건이어도 메모리에는 그룹 수만큼만 올라온다.
      * 인터페이스에 선언한 쿼리 메서드는 Spring Data 가 트랜잭션을 걸지 않으므로,
      * 트랜잭션 밖에서 직접 호출하면 EntityManager 가 호출자 범위가 끝날 때까지 커넥션을 쥐고 있게 된다.
      * 명시적인 읽기 전용 트랜잭션으로 감싸 조회 직후 커넥션을 반납한다.
      */
     @Transactional(readOnly = true)
-    public List<NotificationSubscription> findPending() {
-        return subscriptionRepository.findPending(LocalDate.now(clock));
+    public List<PendingGroup> findPendingGroups() {
+        return subscriptionRepository.findPendingGroups(LocalDate.now(clock));
+    }
+
+    /** 예매가 열린 그룹만 그 그룹의 대기 중인 신청을 읽어 매칭한다 */
+    public void markMatched(PendingGroup group, List<ScreeningResult> results) {
+        if (results.isEmpty()) return;
+        markMatched(subscriptionRepository.findPendingIdsInGroup(
+                group.movieId(), group.branchName(), group.targetDate()), results);
     }
 
     /**
