@@ -37,7 +37,8 @@ class NotificationStateServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new NotificationStateService(subscriptionRepository, outboxService, alertMessageFormatter);
+        service = new NotificationStateService(subscriptionRepository, outboxService, alertMessageFormatter,
+                java.time.Clock.system(java.time.ZoneId.of("Asia/Seoul")));
     }
 
     @Nested

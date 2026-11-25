@@ -8,6 +8,7 @@ import io.github.chunyoungsang.moviebot.domain.user.repository.UserRepository;
 import io.github.chunyoungsang.moviebot.domain.user.service.UserService;
 import io.github.chunyoungsang.moviebot.support.MySqlTestContainer;
 import io.github.chunyoungsang.moviebot.support.TelegramLoginFixture;
+import io.github.chunyoungsang.moviebot.support.TestDates;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -68,9 +69,9 @@ class ApiAuthenticationTest {
         subscriptionRepository.deleteAll();
         userService.activate(ALICE, "alice");
         userService.activate(BOB, "bob");
-        notificationService.register(new NotificationRegisterRequest(ALICE, "위키드", "CGV", "강남", "IMAX", LocalDate.of(2026, 12, 24)));
+        notificationService.register(new NotificationRegisterRequest(ALICE, "위키드", "CGV", "강남", "IMAX", TestDates.future()));
         bobSubscriptionId = notificationService.register(
-                new NotificationRegisterRequest(BOB, "파묘", "CGV", null, null, LocalDate.of(2026, 12, 25))).getSubscriptionId();
+                new NotificationRegisterRequest(BOB, "파묘", "CGV", null, null, TestDates.future().plusDays(1))).getSubscriptionId();
     }
 
     @Test
@@ -100,7 +101,7 @@ class ApiAuthenticationTest {
     void anonymousCannotRegisterForOthers() throws Exception {
         long before = bobSubscriptions();
         var res = send("POST", "/api/notifications", null,
-                "{\"chatId\":\"" + BOB + "\",\"movieTitle\":\"스팸\",\"targetDate\":\"2026-12-31\"}");
+                "{\"chatId\":\"" + BOB + "\",\"movieTitle\":\"스팸\",\"targetDate\":\"" + TestDates.future() + "\"}");
         long added = bobSubscriptions() - before;
         System.out.printf("[API 인증] 토큰 없이 남의 이름으로 신청 → %d, 남에게 등록된 알림 %d건%n", res.statusCode(), added);
 

@@ -10,6 +10,7 @@ import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import io.github.chunyoungsang.moviebot.domain.user.repository.UserRepository;
 import io.github.chunyoungsang.moviebot.global.security.JwtTokenIssuer;
 import io.github.chunyoungsang.moviebot.support.MySqlTestContainer;
+import io.github.chunyoungsang.moviebot.support.TestDates;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -69,16 +70,27 @@ class ApiErrorResponseTest {
         User other = userRepository.save(User.builder().chatId("222").username("other").build());
         Movie movie = movieRepository.save(Movie.builder().movieId("위키드").title("위키드").build());
         othersSubscriptionId = subscriptionRepository.save(NotificationSubscription.builder()
-                .user(other).movie(movie).targetDate(LocalDate.of(2026, 12, 24)).build()).getSubscriptionId();
+                .user(other).movie(movie).targetDate(TestDates.future()).build()).getSubscriptionId();
     }
 
     @Test
     @DisplayName("가입하지 않은 사용자로 신청하면 404 USER_NOT_FOUND")
     void registerWithUnknownUser() throws Exception {
         var response = send("POST", "/api/notifications", tokenOf("999"),
-                "{\"movieTitle\":\"위키드\",\"targetDate\":\"2026-12-24\"}");
+                "{\"movieTitle\":\"위키드\",\"targetDate\":\"" + TestDates.future() + "\"}");
 
         assertError(response, 404, "USER_NOT_FOUND");
+    }
+
+    @Test
+    @DisplayName("지난 날짜로 신청하면 400 TARGET_DATE_PAST, 같은 조건으로 두 번 신청하면 409 DUPLICATE_SUBSCRIPTION")
+    void registerValidation() throws Exception {
+        String past = "{\"movieTitle\":\"위키드\",\"targetDate\":\"" + TestDates.today().minusDays(1) + "\"}";
+        assertError(send("POST", "/api/notifications", tokenOf("111"), past), 400, "TARGET_DATE_PAST");
+
+        String body = "{\"movieTitle\":\"파묘\",\"targetDate\":\"" + TestDates.future() + "\"}";
+        assertThat(send("POST", "/api/notifications", tokenOf("111"), body).statusCode()).isEqualTo(200);
+        assertError(send("POST", "/api/notifications", tokenOf("111"), body), 409, "DUPLICATE_SUBSCRIPTION");
     }
 
     @Test
