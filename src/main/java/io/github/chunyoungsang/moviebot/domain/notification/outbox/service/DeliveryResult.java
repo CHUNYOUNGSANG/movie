@@ -9,7 +9,9 @@ public enum DeliveryResult {
     /** 텔레그램 속도 제한(429), retry_after 후 재시도 (시도 횟수 차감 없음) */
     RATE_LIMITED,
     /** 재시도 포기 (영구 실패 또는 최대 시도 횟수 초과) */
-    DEAD;
+    DEAD,
+    /** 받는 사람이 구독하지 않아(/stop, 봇 차단) 보내지 않음 */
+    CANCELED;
 
     public String tag() {
         return name().toLowerCase();

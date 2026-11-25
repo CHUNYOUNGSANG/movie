@@ -12,13 +12,16 @@ public enum DeliveryStatus {
     /** 발송 대기 중이거나 발송 중 (재시도 대기 포함) */
     IN_PROGRESS,
     /** 재시도를 포기함 */
-    FAILED;
+    FAILED,
+    /** 보내기 전에 구독을 해제해서 보내지 않음 */
+    CANCELED;
 
     static DeliveryStatus of(OutboxStatus status) {
         return switch (status) {
             case SENT -> DELIVERED;
             case PENDING, SENDING -> IN_PROGRESS;
             case DEAD -> FAILED;
+            case CANCELED -> CANCELED;
         };
     }
 }

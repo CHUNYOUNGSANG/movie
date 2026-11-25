@@ -105,6 +105,14 @@ public class NotificationOutbox {
         this.lockedAt = null;
     }
 
+    /** 보내지 않고 끝냄 (받는 사람이 더 이상 구독하지 않음). 시도 횟수는 그대로 */
+    public void cancel(String reason) {
+        requireNotFinished("cancel");
+        this.status = OutboxStatus.CANCELED;
+        this.lastError = truncate(reason);
+        this.lockedAt = null;
+    }
+
     private void requireNotFinished(String action) {
         if (status.isFinished()) {
             throw new IllegalStateException("이미 끝난 Outbox(" + outboxId + ", " + status + ")는 " + action + " 할 수 없음");
