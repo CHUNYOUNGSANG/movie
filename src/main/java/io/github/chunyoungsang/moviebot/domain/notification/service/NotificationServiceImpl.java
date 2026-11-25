@@ -20,6 +20,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -34,12 +36,26 @@ public class NotificationServiceImpl implements NotificationService {
     private final MovieService movieService;     // SRP: 영화/극장/상영관/스케줄 관리는 Movie 도메인 책임
     private final UserService userService;       // SRP: 사용자 조회/구독 상태 관리는 User 도메인 책임
     private final OutboxService outboxService;
+    private final Clock clock;
+
+    /** 영화 제목 최대 길이 (movies.movie_id 에 제목을 그대로 쓴다) */
+    static final int MAX_TITLE_LENGTH = 100;
 
     @Override
     public NotificationSubscription register(NotificationRegisterRequest req) {
+        // 봇·API 공통 규칙이므로 채널(컨트롤러·명령어)이 아니라 여기서 검증한다
+        String title = req.movieTitle() == null ? "" : req.movieTitle().strip();
+        if (title.isEmpty() || title.length() > MAX_TITLE_LENGTH || req.targetDate() == null) {
+            throw new BusinessException(NotificationErrorCode.INVALID_SUBSCRIPTION_REQUEST,
+                    "title=" + req.movieTitle() + ", date=" + req.targetDate());
+        }
+        if (req.targetDate().isBefore(LocalDate.now(clock))) {
+            throw new BusinessException(NotificationErrorCode.TARGET_DATE_PAST, "date=" + req.targetDate());
+        }
+
         User user = userService.getByChatIdOrThrow(req.chatId());
 
-        Movie movie = movieService.findOrCreateMovie(req.movieTitle());
+        Movie movie = movieService.findOrCreateMovie(title);
 
         Theater theater = null;
         if (req.branchName() != null && !req.branchName().isBlank()) {
@@ -50,6 +66,12 @@ public class NotificationServiceImpl implements NotificationService {
         ScreenType screenType = null;
         if (req.screenTypeName() != null && !req.screenTypeName().isBlank()) {
             screenType = movieService.findOrCreateScreenType(req.screenTypeName());
+        }
+
+        // 같은 사용자의 대기 중인 같은 조건 신청 (알림이 두 번 가고 크롤링만 늘어난다). 위에서 만든 영화 등은 롤백된다
+        if (notificationSubscriptionRepository.existsPendingDuplicate(user, movie, theater, screenType, req.targetDate())) {
+            throw new BusinessException(NotificationErrorCode.DUPLICATE_SUBSCRIPTION,
+                    "chatId=" + req.chatId() + ", movie=" + title + ", date=" + req.targetDate());
         }
 
         return notificationSubscriptionRepository.save(NotificationSubscription.builder()

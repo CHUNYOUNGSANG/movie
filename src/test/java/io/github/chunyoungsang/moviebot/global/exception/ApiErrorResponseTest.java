@@ -83,6 +83,17 @@ class ApiErrorResponseTest {
     }
 
     @Test
+    @DisplayName("지난 날짜로 신청하면 400 TARGET_DATE_PAST, 같은 조건으로 두 번 신청하면 409 DUPLICATE_SUBSCRIPTION")
+    void registerValidation() throws Exception {
+        String past = "{\"movieTitle\":\"위키드\",\"targetDate\":\"" + TestDates.today().minusDays(1) + "\"}";
+        assertError(send("POST", "/api/notifications", tokenOf("111"), past), 400, "TARGET_DATE_PAST");
+
+        String body = "{\"movieTitle\":\"파묘\",\"targetDate\":\"" + TestDates.future() + "\"}";
+        assertThat(send("POST", "/api/notifications", tokenOf("111"), body).statusCode()).isEqualTo(200);
+        assertError(send("POST", "/api/notifications", tokenOf("111"), body), 409, "DUPLICATE_SUBSCRIPTION");
+    }
+
+    @Test
     @DisplayName("없는 알림을 취소하면 404 SUBSCRIPTION_NOT_FOUND")
     void cancelUnknownSubscription() throws Exception {
         assertError(send("DELETE", "/api/notifications/99999", tokenOf("111"), null), 404, "SUBSCRIPTION_NOT_FOUND");
