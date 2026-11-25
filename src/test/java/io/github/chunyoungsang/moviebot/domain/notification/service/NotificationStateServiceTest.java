@@ -3,6 +3,7 @@ package io.github.chunyoungsang.moviebot.domain.notification.service;
 import io.github.chunyoungsang.moviebot.domain.movie.dto.ScreeningResult;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Movie;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Theater;
+import io.github.chunyoungsang.moviebot.domain.notification.dto.PendingGroup;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
 import io.github.chunyoungsang.moviebot.domain.notification.sender.AlertMessageFormatter;
@@ -44,6 +45,29 @@ class NotificationStateServiceTest {
     @Nested
     @DisplayName("markMatched()")
     class MarkMatched {
+
+        @Test
+        @DisplayName("그룹으로 받으면 예매가 열린 그룹의 대기 신청만 조회해 매칭한다")
+        void matchesPendingInGroup() {
+            NotificationSubscription sub = subscription(1L, "123", null);
+            PendingGroup group = new PendingGroup("위키드", "위키드", null, sub.getTargetDate());
+            given(subscriptionRepository.findPendingIdsInGroup("위키드", null, sub.getTargetDate())).willReturn(List.of(1L));
+            given(subscriptionRepository.findAllBySubscriptionIdIn(List.of(1L))).willReturn(List.of(sub));
+            given(subscriptionRepository.claimTriggered(1L)).willReturn(1);
+            given(alertMessageFormatter.format(any())).willReturn("알림 본문");
+
+            service.markMatched(group, List.of(screening("CGV 강남")));
+
+            then(outboxService).should().enqueue(sub, "알림 본문");
+        }
+
+        @Test
+        @DisplayName("그룹의 크롤링 결과가 없으면 신청을 조회하지 않는다")
+        void skipsGroupWithoutResults() {
+            service.markMatched(new PendingGroup("위키드", "위키드", null, LocalDate.of(2026, 9, 4)), List.of());
+
+            then(subscriptionRepository).shouldHaveNoInteractions();
+        }
 
         @Test
         @DisplayName("매칭되는 상영이 있으면 triggered=true 로 바꾸고 Outbox 에 기록한다")
