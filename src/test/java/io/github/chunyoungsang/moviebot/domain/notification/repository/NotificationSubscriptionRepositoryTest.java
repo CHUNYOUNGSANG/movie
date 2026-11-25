@@ -5,6 +5,7 @@ import io.github.chunyoungsang.moviebot.domain.movie.entity.Movie;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Theater;
 import io.github.chunyoungsang.moviebot.domain.movie.repository.MovieRepository;
 import io.github.chunyoungsang.moviebot.domain.movie.repository.TheaterRepository;
+import io.github.chunyoungsang.moviebot.domain.notification.dto.PendingGroup;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import io.github.chunyoungsang.moviebot.domain.user.repository.UserRepository;
@@ -52,21 +53,44 @@ class NotificationSubscriptionRepositoryTest {
     }
 
     @Test
-    @DisplayName("findPending: 미발송 + 구독 중인 사용자 + 상영일이 오늘 이후(오늘 포함)만")
-    void findPending() {
+    @DisplayName("findPendingGroups: 미발송 + 구독 중 + 상영일이 오늘 이후(오늘 포함)를 영화|지점|날짜로 한 번씩")
+    void findPendingGroups() {
         User active = userRepository.save(User.builder().chatId("1").username("a").build());
+        User active2 = userRepository.save(User.builder().chatId("3").username("c").build());
         User stopped = userRepository.save(User.builder().chatId("2").username("b").active(false).build());
         Movie movie = movieRepository.save(Movie.builder().movieId("위키드").title("위키드").build());
+        Theater gangnam = theaterRepository.save(Theater.builder().theaterId("CGV|강남").brand("CGV").branchName("강남").build());
 
-        Long today = save(active, movie, TODAY, false);
-        Long tomorrow = save(active, movie, TODAY.plusDays(1), false);
+        save(active, movie, TODAY, false);
+        save(active2, movie, TODAY, false);                      // 같은 조건의 다른 사용자: 같은 그룹
+        save(active, movie, gangnam, TODAY, false);              // 지점 지정: 다른 그룹
+        save(active, movie, TODAY.plusDays(1), false);
         save(active, movie, TODAY.minusDays(1), false);          // 어제: 제외
         save(active, movie, TODAY.plusDays(2), true);            // 이미 매칭: 제외
         save(stopped, movie, TODAY.plusDays(3), false);          // 구독 해제한 사용자: 제외
 
-        assertThat(subscriptionRepository.findPending(TODAY))
-                .extracting(NotificationSubscription::getSubscriptionId)
-                .containsExactlyInAnyOrder(today, tomorrow);
+        assertThat(subscriptionRepository.findPendingGroups(TODAY)).containsExactlyInAnyOrder(
+                new PendingGroup("위키드", "위키드", null, TODAY),
+                new PendingGroup("위키드", "위키드", "강남", TODAY),
+                new PendingGroup("위키드", "위키드", null, TODAY.plusDays(1)));
+    }
+
+    @Test
+    @DisplayName("findPendingIdsInGroup: 지점이 null 이면 전체 지점 신청만, 지정하면 그 지점 신청만. 매칭됨·구독 해제 제외")
+    void findPendingIdsInGroup() {
+        User active = userRepository.save(User.builder().chatId("1").username("a").build());
+        User stopped = userRepository.save(User.builder().chatId("2").username("b").active(false).build());
+        Movie movie = movieRepository.save(Movie.builder().movieId("위키드").title("위키드").build());
+        Theater gangnam = theaterRepository.save(Theater.builder().theaterId("CGV|강남").brand("CGV").branchName("강남").build());
+
+        Long all = save(active, movie, TODAY, false);
+        Long inGangnam = save(active, movie, gangnam, TODAY, false);
+        save(active, movie, TODAY.plusDays(1), false);           // 다른 날짜
+        save(active, movie, gangnam, TODAY, true);               // 이미 매칭
+        save(stopped, movie, TODAY, false);                      // 구독 해제
+
+        assertThat(subscriptionRepository.findPendingIdsInGroup("위키드", null, TODAY)).containsExactly(all);
+        assertThat(subscriptionRepository.findPendingIdsInGroup("위키드", "강남", TODAY)).containsExactly(inGangnam);
     }
 
     @Test
@@ -92,7 +116,11 @@ class NotificationSubscriptionRepositoryTest {
     }
 
     private Long save(User user, Movie movie, LocalDate date, boolean triggered) {
+        return save(user, movie, null, date, triggered);
+    }
+
+    private Long save(User user, Movie movie, Theater theater, LocalDate date, boolean triggered) {
         return subscriptionRepository.save(NotificationSubscription.builder()
-                .user(user).movie(movie).targetDate(date).triggered(triggered).build()).getSubscriptionId();
+                .user(user).movie(movie).theater(theater).targetDate(date).triggered(triggered).build()).getSubscriptionId();
     }
 }

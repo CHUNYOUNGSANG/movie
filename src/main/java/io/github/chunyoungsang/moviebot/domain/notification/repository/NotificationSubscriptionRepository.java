@@ -3,6 +3,7 @@ package io.github.chunyoungsang.moviebot.domain.notification.repository;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Movie;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.ScreenType;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Theater;
+import io.github.chunyoungsang.moviebot.domain.notification.dto.PendingGroup;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import org.springframework.data.jpa.repository.EntityGraph;
@@ -19,14 +20,24 @@ import java.util.Optional;
 public interface NotificationSubscriptionRepository extends JpaRepository<NotificationSubscription, Long> {
 
     /**
-     * 크롤링 대상: 아직 매칭되지 않았고, 구독 중인(active) 사용자의 것이며, 상영일이 오늘 이후인 신청.
+     * 크롤링 대상 그룹(영화|지점|날짜): 아직 매칭되지 않았고, 구독 중인(active) 사용자의 것이며, 상영일이 오늘 이후인 신청.
      * - /stop 하거나 봇을 차단한 사용자는 크롤링하지 않는다
      * - 상영일이 지난 신청은 예매가 열릴 일이 없으므로 크롤링하지 않는다
      */
-    @EntityGraph(attributePaths = {"movie", "theater", "screenType", "user"})
-    @Query("select s from NotificationSubscription s " +
+    @Query("select distinct new io.github.chunyoungsang.moviebot.domain.notification.dto.PendingGroup(" +
+           "m.movieId, m.title, t.branchName, s.targetDate) " +
+           "from NotificationSubscription s join s.movie m left join s.theater t " +
            "where s.triggered = false and s.user.active = true and s.targetDate >= :today")
-    List<NotificationSubscription> findPending(@Param("today") LocalDate today);
+    List<PendingGroup> findPendingGroups(@Param("today") LocalDate today);
+
+    /** 예매가 열린 그룹의 대기 중인 신청 ID (매칭할 때만 그 그룹의 신청을 읽는다) */
+    @Query("select s.subscriptionId from NotificationSubscription s left join s.theater t " +
+           "where s.movie.movieId = :movieId and s.targetDate = :targetDate " +
+           "and s.triggered = false and s.user.active = true " +
+           "and ((:branchName is null and t is null) or t.branchName = :branchName)")
+    List<Long> findPendingIdsInGroup(@Param("movieId") String movieId,
+                                     @Param("branchName") String branchName,
+                                     @Param("targetDate") LocalDate targetDate);
 
     @EntityGraph(attributePaths = {"movie", "theater", "screenType"})
     List<NotificationSubscription> findByUser(User user);
