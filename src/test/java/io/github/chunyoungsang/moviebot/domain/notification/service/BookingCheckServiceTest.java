@@ -8,6 +8,7 @@ import io.github.chunyoungsang.moviebot.domain.movie.entity.ScreenType;
 import io.github.chunyoungsang.moviebot.domain.movie.entity.Theater;
 import io.github.chunyoungsang.moviebot.domain.movie.service.MovieService;
 import io.github.chunyoungsang.moviebot.domain.notification.dto.NotificationRegisterRequest;
+import io.github.chunyoungsang.moviebot.domain.notification.dto.PendingGroup;
 import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
 import io.github.chunyoungsang.moviebot.domain.notification.repository.NotificationSubscriptionRepository;
 import io.github.chunyoungsang.moviebot.domain.user.entity.User;
@@ -61,7 +62,7 @@ class BookingCheckServiceTest {
         @Test
         @DisplayName("대기 신청 없으면 크롤러를 호출하지 않는다")
         void skipsWhenNoPending() {
-            given(notificationStateService.findPending()).willReturn(List.of());
+            given(notificationStateService.findPendingGroups()).willReturn(List.of());
 
             service.checkAndNotify();
 
@@ -69,46 +70,40 @@ class BookingCheckServiceTest {
         }
 
         @Test
-        @DisplayName("크롤링 결과를 스케줄로 저장하고, 그룹의 구독 ID 와 함께 매칭 처리를 위임한다")
+        @DisplayName("크롤링 결과를 스케줄로 저장하고, 그룹과 함께 매칭 처리를 위임한다")
         void savesSchedulesAndDelegatesMatching() {
-            NotificationSubscription sub = NotificationSubscription.builder()
-                    .subscriptionId(1L).user(user("123")).movie(movie("스파이더맨"))
-                    .targetDate(LocalDate.of(2026, 9, 4)).build();
+            PendingGroup group = new PendingGroup("스파이더맨", "스파이더맨", null, LocalDate.of(2026, 9, 4));
             List<ScreeningResult> results = List.of(screening("스파이더맨"));
 
-            given(notificationStateService.findPending()).willReturn(List.of(sub));
+            given(notificationStateService.findPendingGroups()).willReturn(List.of(group));
             given(cgvCrawler.crawl(eq("스파이더맨"), isNull(), any())).willReturn(results);
 
             service.checkAndNotify();
 
             then(movieService).should().saveScreenings(results);
-            then(notificationStateService).should().markMatched(List.of(1L), results);
+            then(notificationStateService).should().markMatched(group, results);
         }
 
         @Test
         @DisplayName("크롤링 결과가 없으면 저장/매칭을 하지 않는다")
         void skipsWhenNoResults() {
-            NotificationSubscription sub = NotificationSubscription.builder()
-                    .subscriptionId(1L).user(user("123")).movie(movie("스파이더맨"))
-                    .targetDate(LocalDate.of(2026, 9, 4)).build();
+            PendingGroup group = new PendingGroup("스파이더맨", "스파이더맨", null, LocalDate.of(2026, 9, 4));
 
-            given(notificationStateService.findPending()).willReturn(List.of(sub));
+            given(notificationStateService.findPendingGroups()).willReturn(List.of(group));
             given(cgvCrawler.crawl(any(), any(), any())).willReturn(List.of());
 
             service.checkAndNotify();
 
             then(movieService).shouldHaveNoInteractions();
-            then(notificationStateService).should(never()).markMatched(any(), any());
+            then(notificationStateService).should(never()).markMatched(any(PendingGroup.class), any());
         }
 
         @Test
         @DisplayName("크롤링이 실패하면(CrawlException) 저장/매칭을 하지 않고, 결과 없음이 아니라 오류로 기록한다")
         void recordsCrawlFailureAsError() {
-            NotificationSubscription sub = NotificationSubscription.builder()
-                    .subscriptionId(1L).user(user("123")).movie(movie("스파이더맨"))
-                    .targetDate(LocalDate.of(2026, 9, 4)).build();
+            PendingGroup group = new PendingGroup("스파이더맨", "스파이더맨", null, LocalDate.of(2026, 9, 4));
 
-            given(notificationStateService.findPending()).willReturn(List.of(sub));
+            given(notificationStateService.findPendingGroups()).willReturn(List.of(group));
             given(cgvCrawler.getCinemaName()).willReturn("CGV");
             given(cgvCrawler.crawl(any(), any(), any())).willThrow(new CrawlException("http_403", "Cloudflare 차단 (테스트)"));
 

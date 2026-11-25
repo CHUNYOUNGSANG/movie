@@ -3,7 +3,7 @@ package io.github.chunyoungsang.moviebot.domain.notification.service;
 import io.github.chunyoungsang.moviebot.domain.movie.crawler.MovieCrawler;
 import io.github.chunyoungsang.moviebot.domain.movie.dto.ScreeningResult;
 import io.github.chunyoungsang.moviebot.domain.movie.service.MovieService;
-import io.github.chunyoungsang.moviebot.domain.notification.entity.NotificationSubscription;
+import io.github.chunyoungsang.moviebot.domain.notification.dto.PendingGroup;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
@@ -15,13 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorCompletionService;
-import java.util.stream.Collectors;
 
 /**
  * 예매 오픈 확인: 대기 중인 알림 신청을 조건별로 묶어 크롤링하고, 결과를 저장·매칭한다.
@@ -46,30 +44,19 @@ public class BookingCheckService {
      */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void checkAndNotify() {
-        List<NotificationSubscription> pending = notificationStateService.findPending();
-        if (pending.isEmpty()) {
+        List<PendingGroup> groups = notificationStateService.findPendingGroups();   // 영화|지점|날짜 (같은 조건은 한 번만 크롤링)
+        if (groups.isEmpty()) {
             log.info("대기 중인 알림 신청 없음");
             return;
         }
-        log.info("알림 신청 {}건 확인 시작", pending.size());
-
-        // movieId|branchName|targetDate 기준으로 그룹핑 (같은 조건은 한 번만 크롤링)
-        Map<String, List<NotificationSubscription>> groups = pending.stream()
-                .collect(Collectors.groupingBy(s -> {
-                    String branch = s.getTheater() != null ? s.getTheater().getBranchName() : "";
-                    return s.getMovie().getMovieId() + "|" + branch + "|" + s.getTargetDate();
-                }));
+        log.info("크롤링 그룹 {}개 확인 시작", groups.size());
 
         // 1) 크롤링(외부 I/O)은 크롤링 전용 스레드풀에서 동시에 실행
         CompletionService<CrawlOutcome> completion = new ExecutorCompletionService<>(crawlExecutor);
         int submitted = 0;
-        for (List<NotificationSubscription> group : groups.values()) {
-            NotificationSubscription sample = group.get(0);
-            String siteHint = sample.getTheater() != null ? sample.getTheater().getBranchName() : null;
-            List<Long> subscriptionIds = group.stream().map(NotificationSubscription::getSubscriptionId).toList();
+        for (PendingGroup group : groups) {
             for (MovieCrawler crawler : crawlers) {
-                completion.submit(() -> crawl(crawler, sample.getMovie().getTitle(),
-                        siteHint, sample.getTargetDate(), subscriptionIds));
+                completion.submit(() -> crawl(crawler, group));
                 submitted++;
             }
         }
@@ -80,21 +67,23 @@ public class BookingCheckService {
             CrawlOutcome outcome = takeQuietly(completion);
             if (outcome == null || outcome.results().isEmpty()) continue;
             movieService.saveScreenings(outcome.results());                               // 짧은 트랜잭션
-            notificationStateService.markMatched(outcome.subscriptionIds(), outcome.results());  // 짧은 트랜잭션
+            notificationStateService.markMatched(outcome.group(), outcome.results());   // 짧은 트랜잭션, 이 그룹의 신청만 읽음
         }
     }
 
     // ── private ───────────────────────────────────────────────
 
-    private record CrawlOutcome(List<Long> subscriptionIds, List<ScreeningResult> results) {
+    private record CrawlOutcome(PendingGroup group, List<ScreeningResult> results) {
     }
 
     /**
      * 크롤링만 수행 (트랜잭션 없음, 크롤링 스레드에서 실행)
      * 지표 crawl.duration{cinema, outcome=found|empty|error}: 크롤링 한 번의 소요 시간과 결과
      */
-    private CrawlOutcome crawl(MovieCrawler crawler, String movieTitle,
-                               String siteHint, LocalDate targetDate, List<Long> subscriptionIds) {
+    private CrawlOutcome crawl(MovieCrawler crawler, PendingGroup group) {
+        String movieTitle = group.movieTitle();
+        String siteHint = group.branchName();
+        LocalDate targetDate = group.targetDate();
         Timer.Sample sample = Timer.start(meterRegistry);
         List<ScreeningResult> results;
         try {
@@ -105,7 +94,7 @@ public class BookingCheckService {
         }
         sample.stop(crawlTimer(crawler, results.isEmpty() ? "empty" : "found"));
         log.info("[{}] {} siteHint={} {} → {}건", crawler.getCinemaName(), movieTitle, siteHint, targetDate, results.size());
-        return new CrawlOutcome(subscriptionIds, results);
+        return new CrawlOutcome(group, results);
     }
 
     private Timer crawlTimer(MovieCrawler crawler, String outcome) {
