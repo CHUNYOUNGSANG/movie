@@ -86,6 +86,35 @@ class TelegramClientTest {
     }
 
     @Test
+    @DisplayName("deliver() 는 403(봇 차단)과 400 chat not found 를 '받는 사람에게 보낼 수 없음'으로, 다른 400 은 아니라고 구분한다")
+    void deliver_classifiesRecipientUnavailable() {
+        given(restTemplate.postForObject(anyString(), any(Map.class), eq(Map.class)))
+                .willThrow(clientError(org.springframework.http.HttpStatus.FORBIDDEN,
+                        "{\"ok\":false,\"error_code\":403,\"description\":\"Forbidden: bot was blocked by the user\"}"))
+                .willThrow(clientError(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: chat not found\"}"))
+                .willThrow(clientError(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "{\"ok\":false,\"error_code\":400,\"description\":\"Bad Request: message is too long\"}"));
+
+        MessageSendException blocked = deliverError();
+        MessageSendException chatNotFound = deliverError();
+        MessageSendException tooLong = deliverError();
+
+        org.assertj.core.api.Assertions.assertThat(blocked.isRecipientUnavailable()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(blocked.isRetryable()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(blocked.getMessage()).doesNotContain("real-token-12345");
+        org.assertj.core.api.Assertions.assertThat(chatNotFound.isRecipientUnavailable()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(tooLong.isRecipientUnavailable()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(tooLong.isRetryable()).isFalse();
+    }
+
+    private static org.springframework.web.client.HttpClientErrorException clientError(
+            org.springframework.http.HttpStatus status, String body) {
+        return org.springframework.web.client.HttpClientErrorException.create(status, status.getReasonPhrase(), null,
+                body.getBytes(java.nio.charset.StandardCharsets.UTF_8), java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    @Test
     @DisplayName("deliver() 실패 예외에는 봇 토큰이 포함되지 않는다 (DB last_error / 로그 노출 방지)")
     void deliver_doesNotLeakBotToken() {
         // RestTemplate 의 I/O 예외 메시지에는 요청 URL(토큰 포함)이 그대로 들어간다
