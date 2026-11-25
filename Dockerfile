@@ -17,6 +17,9 @@ RUN ./gradlew bootJar --no-daemon -x test
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
 
+# root 가 아닌 전용 사용자로 실행한다 (브라우저가 외부 사이트를 여는 프로세스이므로 컨테이너 탈출 시 피해를 줄임)
+RUN groupadd --system app && useradd --system --gid app --home-dir /app --shell /usr/sbin/nologin app
+
 # Chromium 시스템 의존 라이브러리 + unzip
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
@@ -32,8 +35,17 @@ COPY --from=builder /app/build/libs/*.jar app.jar
 ENV PLAYWRIGHT_BROWSERS_PATH=/playwright-browsers
 RUN unzip -q app.jar 'BOOT-INF/lib/*' -d /tmp/pw && \
     java -cp "/tmp/pw/BOOT-INF/lib/*" com.microsoft.playwright.CLI install --with-deps chromium && \
-    rm -rf /tmp/pw
+    rm -rf /tmp/pw && \
+    chown -R app:app /app /playwright-browsers
+
+USER app
 
 EXPOSE 8080
 
+# 컨테이너가 떠 있어도 앱이 응답하지 않으면 unhealthy (관리 포트 8081 의 /actuator/health: DB 연결 포함)
+# start-period: Flyway 마이그레이션·Playwright 준비 시간
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD curl -fsS http://localhost:8081/actuator/health || exit 1
+
+# exec 형식: java 가 PID 1 이 되어 docker stop 의 SIGTERM 을 직접 받는다 (정상 종료)
 ENTRYPOINT ["java", "-jar", "app.jar"]
