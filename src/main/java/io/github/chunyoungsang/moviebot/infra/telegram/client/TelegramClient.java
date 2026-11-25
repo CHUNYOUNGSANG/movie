@@ -92,6 +92,9 @@ public class TelegramClient implements MessageSender {
         } catch (Exception e) {
             // 원본 예외(cause)는 붙이지 않는다: RestTemplate 예외 메시지에 토큰이 포함된 URL 이 들어 있어
             // 스택트레이스 로깅이나 DB(last_error) 저장 시 토큰이 노출될 수 있다
+            if (isRecipientUnavailable(e)) {
+                throw MessageSendException.recipientUnavailable("받는 사람에게 보낼 수 없음 chatId=" + chatId + ": " + redact(e));
+            }
             throw new MessageSendException("알림 발송 실패 chatId=" + chatId + ": " + redact(e), null,
                     isRetryable(e), retryAfter(e));
         }
@@ -113,6 +116,19 @@ public class TelegramClient implements MessageSender {
             return clientError.getStatusCode().value() == 429;
         }
         return true;
+    }
+
+    /**
+     * 받는 사람에게 더 이상 보낼 수 없는 실패.
+     * - 403: 봇을 차단함(bot was blocked by the user), 탈퇴한 계정(user is deactivated) 등. 봇이 보낼 권한이 없다
+     * - 400 chat not found: 대화방이 없다
+     * 그 외 400(메시지 형식 오류 등)은 메시지 문제이므로 받는 사람과 무관하다
+     */
+    static boolean isRecipientUnavailable(Exception e) {
+        if (!(e instanceof HttpClientErrorException clientError)) return false;
+        int status = clientError.getStatusCode().value();
+        return status == 403
+                || (status == 400 && clientError.getResponseBodyAsString().toLowerCase().contains("chat not found"));
     }
 
     /** 응답 본문 예: {"ok":false,"error_code":429,"parameters":{"retry_after":5}} */

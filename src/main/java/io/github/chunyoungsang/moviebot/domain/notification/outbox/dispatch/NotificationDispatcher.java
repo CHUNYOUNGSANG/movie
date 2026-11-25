@@ -3,7 +3,9 @@ package io.github.chunyoungsang.moviebot.domain.notification.outbox.dispatch;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.OutboxService;
 import io.github.chunyoungsang.moviebot.domain.notification.outbox.service.DeliveryResult;
 
+import io.github.chunyoungsang.moviebot.domain.notification.sender.MessageSendException;
 import io.github.chunyoungsang.moviebot.domain.notification.sender.MessageSender;
+import io.github.chunyoungsang.moviebot.domain.user.service.UserService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 
@@ -25,6 +27,7 @@ public class NotificationDispatcher {
 
     private final OutboxService outboxService;
     private final MessageSender messageSender;
+    private final UserService userService;
     private final MeterRegistry meterRegistry;
 
     public void dispatch(Long outboxId) {
@@ -43,6 +46,11 @@ public class NotificationDispatcher {
             messageSender.deliver(msg.chatId(), msg.message());
         } catch (Exception e) {
             log.warn("알림 발송 실패: outboxId={}, chatId={}, cause={}", outboxId, msg.chatId(), e.getMessage());
+            if (e instanceof MessageSendException mse && mse.isRecipientUnavailable()) {
+                // 봇 차단 등: 이 사용자의 남은 신청은 크롤링하지 않고, 대기 중인 알림은 CANCELED 로 끝난다
+                userService.deactivate(msg.chatId());
+                log.info("받는 사람에게 보낼 수 없어 구독 해제: chatId={}", msg.chatId());
+            }
             DeliveryResult result = outboxService.markFailed(outboxId, e);
             sample.stop(deliveryTimer(result));
             return;
