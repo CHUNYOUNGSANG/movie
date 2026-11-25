@@ -10,6 +10,7 @@ import io.github.chunyoungsang.moviebot.domain.user.entity.User;
 import io.github.chunyoungsang.moviebot.domain.user.repository.UserRepository;
 import io.github.chunyoungsang.moviebot.global.security.JwtTokenIssuer;
 import io.github.chunyoungsang.moviebot.support.MySqlTestContainer;
+import io.github.chunyoungsang.moviebot.support.TestDates;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -69,14 +70,14 @@ class ApiErrorResponseTest {
         User other = userRepository.save(User.builder().chatId("222").username("other").build());
         Movie movie = movieRepository.save(Movie.builder().movieId("위키드").title("위키드").build());
         othersSubscriptionId = subscriptionRepository.save(NotificationSubscription.builder()
-                .user(other).movie(movie).targetDate(LocalDate.of(2026, 12, 24)).build()).getSubscriptionId();
+                .user(other).movie(movie).targetDate(TestDates.future()).build()).getSubscriptionId();
     }
 
     @Test
     @DisplayName("가입하지 않은 사용자로 신청하면 404 USER_NOT_FOUND")
     void registerWithUnknownUser() throws Exception {
         var response = send("POST", "/api/notifications", tokenOf("999"),
-                "{\"movieTitle\":\"위키드\",\"targetDate\":\"2026-12-24\"}");
+                "{\"movieTitle\":\"위키드\",\"targetDate\":\"" + TestDates.future() + "\"}");
 
         assertError(response, 404, "USER_NOT_FOUND");
     }

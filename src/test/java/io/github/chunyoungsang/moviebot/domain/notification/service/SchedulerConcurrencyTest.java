@@ -23,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import io.github.chunyoungsang.moviebot.support.MySqlTestContainer;
+import io.github.chunyoungsang.moviebot.support.TestDates;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -60,7 +61,7 @@ class SchedulerConcurrencyTest {
         MySqlTestContainer.registerFreshDatabase(registry);   // 테스트 클래스마다 독립된 DB
     }
 
-    private static final LocalDate TARGET_DATE = LocalDate.of(2026, 12, 24);
+    private static final LocalDate TARGET_DATE = TestDates.future();
 
     @MockitoBean private RestTemplate restTemplate;
     @MockitoBean private MovieCrawler crawler;

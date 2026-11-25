@@ -24,6 +24,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.client.RestTemplate;
 import io.github.chunyoungsang.moviebot.support.MySqlTestContainer;
+import io.github.chunyoungsang.moviebot.support.TestDates;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -54,7 +55,7 @@ class CrawlParallelismTest {
         MySqlTestContainer.registerFreshDatabase(registry);   // 테스트 클래스마다 독립된 DB
     }
 
-    private static final LocalDate TARGET_DATE = LocalDate.of(2026, 12, 24);
+    private static final LocalDate TARGET_DATE = TestDates.future();
     private static final int GROUPS = 10;
     private static final long CRAWL_MILLIS = 500;
     private static final int CONCURRENCY = 3;
