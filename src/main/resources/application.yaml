@@ -39,6 +39,7 @@ spring:
 telegram:
   bot:
     token: ${TELEGRAM_BOT_TOKEN}
+  api-base-url: https://api.telegram.org   # 부하 테스트에서만 가짜 서버로 바꿈 (TELEGRAM_API_BASE_URL, loadtest/)
   rate-limit:
     per-second: 25   # 전역 발송 제한(초당 약 30건)보다 여유 있게. 서버 1대 기준
 
@@ -65,6 +66,9 @@ notification:
     cron: "0 10 0 * * *"
   outbox:
     relay-delay-ms: 10000   # 미발송/재시도 대상 확인 주기
+    relay-batch-size: 50    # 한 번에 조회해 나눠 보낼 건수. 남아 있으면 쉬지 않고 다음 묶음 (최대 relay-max-run-time)
+    relay-max-run-time: 1m
+    relay-concurrency: 8    # relay 발송 스레드 수 (전체 속도는 telegram.rate-limit.per-second 가 정함)
     base-delay-ms: 30000    # 재시도 대기 시작값 (30초 → 1분 → 2분 → 4분, 지수 백오프)
     max-attempts: 5         # 최대 발송 시도 횟수 (초과 시 DEAD)
 

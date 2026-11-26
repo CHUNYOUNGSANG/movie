@@ -1,0 +1,14 @@
+# 부하 테스트 전용: 앱 + 가짜 텔레그램 서버를 5초마다 수집 (짧은 실험이라 운영보다 촘촘하게)
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: moviebot
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["app:8081"]
+  - job_name: fake-telegram
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["fake-telegram:8080"]
