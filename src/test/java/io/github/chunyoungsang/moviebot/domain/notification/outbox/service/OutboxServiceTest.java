@@ -43,7 +43,7 @@ class OutboxServiceTest {
 
     @BeforeEach
     void setUp() {
-        OutboxProperties properties = new OutboxProperties(30_000, Duration.ofHours(1), 3, 10_000, 50, Duration.ofMinutes(5));
+        OutboxProperties properties = new OutboxProperties(30_000, Duration.ofHours(1), 3, 10_000, 50, Duration.ofMinutes(5), Duration.ofMinutes(1));
         service = new OutboxService(outboxRepository, historyRepository, properties, new RetryPolicy(properties), eventPublisher);
         outbox = sendingOutbox(0);
         lenient().when(outboxRepository.findById(1L)).thenAnswer(inv -> Optional.of(outbox));
