@@ -35,7 +35,13 @@ public class TelegramClient implements MessageSender {
     @Value("${telegram.bot.token}")
     private String botToken;
 
-    private static final String API = "https://api.telegram.org/bot";
+    /** Bot API 주소. 운영은 기본값, 부하 테스트에서만 가짜 서버로 바꾼다 (loadtest/) */
+    @Value("${telegram.api-base-url:https://api.telegram.org}")
+    private String apiBaseUrl;
+
+    private String api() {
+        return apiBaseUrl + "/bot";
+    }
 
     /** 토큰이 설정되지 않은 환경(로컬, CI)에서는 텔레그램을 호출하지 않는다 */
     public boolean isConfigured() {
@@ -52,7 +58,7 @@ public class TelegramClient implements MessageSender {
                 .map(e -> Map.of("command", e.getKey(), "description", e.getValue()))
                 .toList();
         try {
-            restTemplate.postForObject(API + botToken + "/setMyCommands", Map.of("commands", body), Map.class);
+            restTemplate.postForObject(api() + botToken + "/setMyCommands", Map.of("commands", body), Map.class);
             log.info("텔레그램 자동완성 메뉴 등록 완료 ({}개)", body.size());
         } catch (Exception e) {
             log.error("텔레그램 자동완성 메뉴 등록 실패: {}", redact(e));
@@ -65,7 +71,7 @@ public class TelegramClient implements MessageSender {
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> response = restTemplate.getForObject(
-                    API + botToken + "/getUpdates?offset=" + offset + "&timeout=1", Map.class);
+                    api() + botToken + "/getUpdates?offset=" + offset + "&timeout=1", Map.class);
             if (response == null || !Boolean.TRUE.equals(response.get("ok"))) return List.of();
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> updates = (List<Map<String, Object>>) response.get("result");
@@ -150,7 +156,7 @@ public class TelegramClient implements MessageSender {
             return;
         }
 
-        String url = API + botToken + "/sendMessage";
+        String url = api() + botToken + "/sendMessage";
         Map<String, String> body = new HashMap<>();
         body.put("chat_id", chatId);
         body.put("text", text);
