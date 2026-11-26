@@ -16,7 +16,7 @@ class RetryPolicyTest {
 
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 12, 24, 10, 0);
     private final RetryPolicy policy = new RetryPolicy(
-            new OutboxProperties(30_000, Duration.ofHours(1), 3, 10_000, 50, Duration.ofMinutes(5)));
+            new OutboxProperties(30_000, Duration.ofHours(1), 3, 10_000, 50, Duration.ofMinutes(5), Duration.ofMinutes(1)));
 
     @Test
     @DisplayName("일시 장애: 시도 횟수 +1, 백오프 뒤 재시도")
