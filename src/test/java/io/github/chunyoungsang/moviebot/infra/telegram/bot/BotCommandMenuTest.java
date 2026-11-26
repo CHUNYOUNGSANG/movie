@@ -38,6 +38,6 @@ class BotCommandMenuTest {
 
         assertThat(menu.getValue().keySet())
                 .containsExactly("start", "add", "list", "history", "cancel", "stop", "help");
-        assertThat(menu.getValue()).containsEntry("add", "영화 알림 신청");
+        assertThat(menu.getValue()).containsEntry("add", "영화 알림 신청 · 영화제목 날짜 [지점] [관]");
     }
 }

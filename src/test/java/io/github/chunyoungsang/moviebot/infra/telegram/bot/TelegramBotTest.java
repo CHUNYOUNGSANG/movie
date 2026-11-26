@@ -267,6 +267,46 @@ class TelegramBotTest {
         }
 
         @Test
+        @DisplayName("제목에 띄어쓰기가 있으면 날짜 앞까지를 제목으로, 날짜 뒤를 지점·관으로 읽는다")
+        void titleWithSpaces_isJoinedUntilDate() {
+            service.processUpdate(update("111", "chun", "/add 슬픈 연대 2026-11-26 용산 IMAX"));
+
+            then(notificationService).should().register(argThat(r ->
+                    r.movieTitle().equals("슬픈 연대")
+                            && r.targetDate().equals(LocalDate.of(2026, 11, 26))
+                            && "용산".equals(r.branchName())
+                            && "IMAX".equals(r.screenTypeName())));
+        }
+
+        @Test
+        @DisplayName("날짜가 없으면 register를 호출하지 않고 날짜 형식을 안내한다")
+        void noDate_sendsFormatError() {
+            service.processUpdate(update("111", "chun", "/add 슬픈 연대"));
+
+            then(notificationService).should(never()).register(any());
+            then(messageSender).should().sendMessage(eq("111"), contains("날짜 형식"));
+        }
+
+        @Test
+        @DisplayName("날짜만 있고 제목이 없으면 사용법을 보낸다")
+        void noTitle_sendsUsage() {
+            service.processUpdate(update("111", "chun", "/add 2026-11-26"));
+
+            then(notificationService).should(never()).register(any());
+            then(messageSender).should().sendMessage(eq("111"), contains("사용법"));
+        }
+
+        @Test
+        @DisplayName("/add 만 보내면 오류 대신 입력 형식과 예시를 안내한다")
+        void bareAdd_sendsGuideWithoutError() {
+            service.processUpdate(update("111", "chun", "/add"));
+
+            then(notificationService).should(never()).register(any());
+            then(messageSender).should().sendMessage(eq("111"), argThat(text ->
+                    text.contains("사용법") && text.contains("예시") && !text.contains("❌")));
+        }
+
+        @Test
         @DisplayName("가입 전 사용자면 /start 를 안내한다")
         void unknownUser_guidesToStart() {
             given(notificationService.register(any())).willThrow(new BusinessException(UserErrorCode.USER_NOT_FOUND));
