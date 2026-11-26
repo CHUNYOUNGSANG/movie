@@ -1,0 +1,10 @@
+# monitoring/grafana/dashboards/*.json 을 대시보드로 자동 등록한다.
+apiVersion: 1
+providers:
+  - name: moviebot
+    folder: Moviebot
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
