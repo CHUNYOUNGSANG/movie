@@ -39,6 +39,7 @@ spring:
 telegram:
   bot:
     token: ${TELEGRAM_BOT_TOKEN}
+  api-base-url: https://api.telegram.org   # 부하 테스트에서만 가짜 서버로 바꿈 (TELEGRAM_API_BASE_URL, loadtest/)
   rate-limit:
     per-second: 25   # 전역 발송 제한(초당 약 30건)보다 여유 있게. 서버 1대 기준
 

@@ -29,6 +29,18 @@ class TelegramClientTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(telegramService, "botToken", "real-token-12345");
+        ReflectionTestUtils.setField(telegramService, "apiBaseUrl", "https://api.telegram.org");
+    }
+
+    @Test
+    @DisplayName("API 주소를 설정으로 바꾸면 그 주소로 호출한다 (부하 테스트용 가짜 서버)")
+    void usesConfiguredApiBaseUrl() {
+        ReflectionTestUtils.setField(telegramService, "apiBaseUrl", "http://fake-telegram:8080");
+
+        telegramService.sendMessage("123456789", "테스트 메시지");
+
+        then(restTemplate).should().postForObject(
+                eq("http://fake-telegram:8080/botreal-token-12345/sendMessage"), any(Map.class), eq(Map.class));
     }
 
     @Test
