@@ -68,7 +68,24 @@ docker compose exec app curl -s localhost:8081/actuator/prometheus | grep -E "^(
 | `notification_outbox_oldest_pending_age_seconds` | 가장 오래 기다린 알림 | 1분 이상 지속되면 발송 장애 |
 | `retention_deleted_total{table}` | 보관 정책으로 지운 행 수 (테이블별) | 매일 03:30 이후 증가 |
 
-Prometheus 서버를 따로 띄운다면 같은 docker 네트워크에서 `http://app:8081/actuator/prometheus` 를 수집한다. PromQL 예:
+### Prometheus + Grafana
+
+`docker compose up -d` 로 Prometheus(15초마다 `app:8081` 수집, 30일 보관)와 Grafana 가 함께 뜬다. 설정은 `monitoring/` 에 있다.
+
+| 화면 | 주소 | 확인할 것 |
+|---|---|---|
+| Prometheus | http://localhost:9090 | Status → Targets 에서 `moviebot` 이 `UP` |
+| Grafana | http://localhost:3000 | `.env` 의 `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` 로 로그인 → Dashboards → Moviebot → "Moviebot 운영" |
+
+두 포트는 `127.0.0.1` 에만 열려 있다. 서버에 배포했다면 내 컴퓨터에서 SSH 터널로 본다.
+
+```bash
+ssh -L 3000:localhost:3000 -L 9090:localhost:9090 사용자@서버주소
+```
+
+Prometheus 는 띄운 시점부터 저장하므로 처음에는 그래프가 비어 있다. 대시보드(`monitoring/grafana/dashboards/moviebot.json`)는 파일로 관리하며, 화면에서 고친 내용은 저장되지 않는다 (JSON 을 내보내 파일을 바꾼다).
+
+PromQL 예:
 
 ```promql
 rate(crawl_duration_seconds_sum[1h]) / rate(crawl_duration_seconds_count[1h])      # 크롤링 평균 소요 시간
