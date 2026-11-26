@@ -146,9 +146,12 @@ class DataRetentionTest {
         jdbc.batchUpdate("INSERT INTO notification_subscriptions (subscription_id, user_id, movie_id, target_date, is_triggered, expired_at) VALUES (?, ?, ?, ?, ?, ?)", subs);
         jdbc.batchUpdate("INSERT INTO notification_outbox (subscription_id, chat_id, message, status, next_attempt_at, created_at, updated_at) VALUES (?, 'c', '알림', ?, ?, ?, ?)", outbox);
         jdbc.batchUpdate("INSERT INTO notification_histories (subscription_id, sent_at, status) VALUES (?, ?, 'SUCCESS')", histories);
+        // 재시도 대기 중(다음 시도 1시간 뒤)으로 둔다. 다음 시도 시각이 지금이면 relay 스케줄러(10초 주기)가
+        // purge 전에 발송해 SENT 로 바꿀 수 있어, 그때는 이 신청도 지워져 결과가 실행마다 달라진다 (CI 에서 실패)
         Timestamp now = Timestamp.valueOf(LocalDateTime.now());
+        Timestamp retryLater = Timestamp.valueOf(LocalDateTime.now().plusHours(1));
         jdbc.update("INSERT INTO notification_outbox (subscription_id, chat_id, message, status, next_attempt_at, created_at, updated_at) VALUES (?, 'c', '알림', 'PENDING', ?, ?, ?)",
-                pendingOutboxSub, now, now, now);
+                pendingOutboxSub, retryLater, now, now);
         return jdbc.queryForObject("SELECT outbox_id FROM notification_outbox WHERE subscription_id = ?", Long.class, pendingOutboxSub);
     }
 
