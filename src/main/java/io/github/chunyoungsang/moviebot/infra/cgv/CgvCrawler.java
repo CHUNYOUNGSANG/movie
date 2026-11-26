@@ -12,6 +12,7 @@ import jakarta.annotation.PreDestroy;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.net.URLEncoder;
@@ -29,6 +30,7 @@ import java.util.function.Supplier;
  */
 @Slf4j
 @Component
+@Profile("!loadtest")   // 부하 테스트에서는 실제 CGV 대신 LoadTestMovieCrawler
 public class CgvCrawler implements MovieCrawler {
 
     private static final String BASE    = "https://cgv.co.kr/api/v1/booking";

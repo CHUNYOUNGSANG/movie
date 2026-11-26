@@ -1,0 +1,80 @@
+# 부하 테스트 전용 스택. 운영 스택(docker-compose.yml)과 컨테이너·볼륨·포트가 겹치지 않는다.
+# 실제 텔레그램·CGV 는 호출하지 않는다 (가짜 텔레그램 서버 + loadtest 프로필의 가짜 크롤러).
+# 사용법: loadtest/README.md
+name: moviebot-loadtest
+
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: loadtest
+      MYSQL_DATABASE: moviebotdb
+      MYSQL_USER: moviebot
+      MYSQL_PASSWORD: loadtest
+    tmpfs:
+      - /var/lib/mysql          # 실험이 끝나면 버리는 데이터
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ploadtest"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  fake-telegram:
+    image: python:3.12-slim
+    command: ["python", "-u", "/srv/server.py"]
+    environment:
+      LIMIT_PER_SEC: ${FAKE_TG_LIMIT_PER_SEC:-30}
+      RETRY_AFTER: ${FAKE_TG_RETRY_AFTER:-5}
+      LATENCY_MS: ${FAKE_TG_LATENCY_MS:-50}
+    volumes:
+      - ./loadtest/fake-telegram/server.py:/srv/server.py:ro
+
+  app:
+    build: .
+    image: ${APP_IMAGE:-moviebot-loadtest-app:latest}   # 개선 전/후 이미지를 바꿔 같은 타임라인에서 비교 (loadtest/README.md)
+    depends_on:
+      db:
+        condition: service_healthy
+      fake-telegram:
+        condition: service_started
+    environment:
+      SPRING_PROFILES_ACTIVE: loadtest
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/moviebotdb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul&rewriteBatchedStatements=true
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: com.mysql.cj.jdbc.Driver
+      SPRING_DATASOURCE_USERNAME: moviebot
+      SPRING_DATASOURCE_PASSWORD: loadtest
+      TELEGRAM_BOT_TOKEN: loadtest-fake-token
+      TELEGRAM_API_BASE_URL: http://fake-telegram:8080
+      TELEGRAM_RATE_LIMIT_PER_SECOND: ${RATE_LIMIT_PER_SECOND:-25}
+      NOTIFICATION_OUTBOX_MAXATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-5}
+      MOVIE_CHECK_CRON: ${LOADTEST_CHECK_CRON:-0 * * * * *}
+      LOADTEST_CRAWL_DELAY: ${LOADTEST_CRAWL_DELAY:-PT2S}
+      TZ: Asia/Seoul
+    stop_grace_period: 60s
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    depends_on:
+      - app
+    volumes:
+      - ./loadtest/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - loadtest-prometheus:/prometheus   # 측정을 여러 번 해도 그래프가 이어지도록
+    ports:
+      - "127.0.0.1:9091:9090"
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    depends_on:
+      - prometheus
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"      # 로컬 실험용: 로그인 없이 보기 (127.0.0.1 에만 공개)
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: Asia/Seoul
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3001:3000"
+
+volumes:
+  loadtest-prometheus:
