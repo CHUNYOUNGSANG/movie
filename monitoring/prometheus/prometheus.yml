@@ -1,0 +1,11 @@
+# 앱의 /actuator/prometheus 를 15초마다 수집한다.
+# app:8081 은 같은 docker 네트워크에서만 열려 있다 (호스트에 공개하지 않음).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: moviebot
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["app:8081"]
