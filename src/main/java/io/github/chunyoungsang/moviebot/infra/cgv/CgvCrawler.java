@@ -210,25 +210,51 @@ public class CgvCrawler implements MovieCrawler {
     // ── 영화 검색 ──────────────────────────────────────────────
 
     /** 영화 번호. 검색 결과에 없으면 empty, 검색 API 호출이 실패하면 CrawlException */
+    /**
+     * 영화 번호 찾기. CGV 검색은 띄어쓰기에 민감하므로 입력 그대로 → 첫 단어 순으로 넓혀 검색하고,
+     * 결과는 공백·문장부호를 뺀 제목끼리 비교한다.
+     */
     private Optional<String> findMovNo(Session session, String movieTitle) {
-        String url = BASE + "/searchAtktTopPostrList?coCd=" + CO_CD
-                + "&movNm=" + URLEncoder.encode(movieTitle, StandardCharsets.UTF_8)
-                + "&div=&attrCd=";
+        for (String keyword : searchKeywords(movieTitle)) {
+            String url = BASE + "/searchAtktTopPostrList?coCd=" + CO_CD
+                    + "&movNm=" + URLEncoder.encode(keyword, StandardCharsets.UTF_8)
+                    + "&div=&attrCd=";
 
-        JsonNode root = readJson(getJson(session, url), url);
-        if (root.path("statusCode").asInt(-1) != 0) {
-            log.warn("CGV 영화 검색 statusCode={} [{}]", root.path("statusCode").asText(), movieTitle);
-            return Optional.empty();
-        }
-
-        String prefix = movieTitle.substring(0, Math.min(2, movieTitle.length()));
-        for (JsonNode movie : root.path("data")) {
-            String nm = movie.path("movNm").asText("");
-            if (nm.contains(prefix)) {
-                return Optional.of(movie.path("movNo").asText());
+            JsonNode root = readJson(getJson(session, url), url);
+            if (root.path("statusCode").asInt(-1) != 0) {
+                log.warn("CGV 영화 검색 statusCode={} [{}]", root.path("statusCode").asText(), keyword);
+                continue;
             }
+            Optional<String> movNo = pickMovNo(root.path("data"), movieTitle);
+            if (movNo.isPresent()) return movNo;
         }
         return Optional.empty();
+    }
+
+    /** 검색어 후보: 입력 그대로, 그다음 첫 단어 (공백이 없으면 앞 두 글자). 중복 제거 */
+    static List<String> searchKeywords(String movieTitle) {
+        String title = movieTitle.strip();
+        String[] words = title.split("\\s+");
+        String wider = words.length > 1 ? words[0] : title.substring(0, Math.min(2, title.length()));
+        return wider.equals(title) ? List.of(title) : List.of(title, wider);
+    }
+
+    /** 검색 결과에서 고르기: 정규화한 제목이 같으면 우선, 없으면 입력을 포함하는 첫 영화 */
+    static Optional<String> pickMovNo(JsonNode data, String movieTitle) {
+        String wanted = normalizeTitle(movieTitle);
+        if (wanted.isEmpty()) return Optional.empty();
+        String partial = null;
+        for (JsonNode movie : data) {
+            String nm = normalizeTitle(movie.path("movNm").asText(""));
+            if (nm.equals(wanted)) return Optional.of(movie.path("movNo").asText());
+            if (partial == null && nm.contains(wanted)) partial = movie.path("movNo").asText();
+        }
+        return Optional.ofNullable(partial);
+    }
+
+    /** 글자·숫자만 남기고 소문자로 ("슬픈 연대" = "슬픈연대", "스파이더맨-브랜드 뉴 데이" = "스파이더맨브랜드뉴데이") */
+    private static String normalizeTitle(String title) {
+        return title.replaceAll("[^\\p{L}\\p{N}]", "").toLowerCase(java.util.Locale.ROOT);
     }
 
     // ── 상영 스케줄 조회 ────────────────────────────────────────

@@ -60,6 +60,73 @@ class CgvCrawlerTest {
     }
 
     @Nested
+    @DisplayName("영화 제목 매칭")
+    class MovieTitleMatching {
+
+        private final ObjectMapper mapper = new ObjectMapper();
+
+        @Test
+        @DisplayName("띄어쓰기·문장부호가 달라도 같은 제목으로 본다")
+        void ignoresSpacesAndPunctuation() throws Exception {
+            JsonNode data = mapper.readTree("""
+                    [{"movNm": "슬픈 연대", "movNo": "1"}]""");
+
+            assertThat(invokePick(data, "슬픈연대")).contains("1");
+            assertThat(invokePick(data, "슬픈 연대")).contains("1");
+        }
+
+        @Test
+        @DisplayName("제목이 정확히 같은 영화를 부분 일치보다 먼저 고른다")
+        void prefersExactMatch() throws Exception {
+            JsonNode data = mapper.readTree("""
+                    [{"movNm": "듄: 파트2 (IMAX)", "movNo": "1"},
+                     {"movNm": "듄", "movNo": "2"}]""");
+
+            assertThat(invokePick(data, "듄")).contains("2");
+        }
+
+        @Test
+        @DisplayName("입력이 CGV 제목의 일부면 고른다")
+        void matchesPartialTitle() throws Exception {
+            JsonNode data = mapper.readTree("""
+                    [{"movNm": "스파이더맨-브랜드 뉴 데이", "movNo": "7"}]""");
+
+            assertThat(invokePick(data, "스파이더맨")).contains("7");
+        }
+
+        @Test
+        @DisplayName("앞 두 글자만 같은 다른 영화는 고르지 않는다")
+        void doesNotMatchOnSharedPrefixOnly() throws Exception {
+            JsonNode data = mapper.readTree("""
+                    [{"movNm": "슬픈 노래", "movNo": "9"}]""");
+
+            assertThat(invokePick(data, "슬픈 연대")).isEmpty();
+        }
+
+        @Test
+        @DisplayName("검색어는 입력 그대로 → 첫 단어 순서로, 중복 없이 만든다")
+        void searchKeywords() throws Exception {
+            assertThat(invokeKeywords("슬픈 연대")).containsExactly("슬픈 연대", "슬픈");
+            assertThat(invokeKeywords("슬픈연대")).containsExactly("슬픈연대", "슬픈");
+            assertThat(invokeKeywords("듄")).containsExactly("듄");
+        }
+
+        @SuppressWarnings("unchecked")
+        private java.util.Optional<String> invokePick(JsonNode data, String title) throws Exception {
+            Method method = CgvCrawler.class.getDeclaredMethod("pickMovNo", JsonNode.class, String.class);
+            method.setAccessible(true);
+            return (java.util.Optional<String>) method.invoke(null, data, title);
+        }
+
+        @SuppressWarnings("unchecked")
+        private List<String> invokeKeywords(String title) throws Exception {
+            Method method = CgvCrawler.class.getDeclaredMethod("searchKeywords", String.class);
+            method.setAccessible(true);
+            return (List<String>) method.invoke(null, title);
+        }
+    }
+
+    @Nested
     @DisplayName("parseTime()")
     class ParseTime {
 
