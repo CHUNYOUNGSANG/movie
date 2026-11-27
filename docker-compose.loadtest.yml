@@ -71,7 +71,9 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_DATE_FORMATS_DEFAULT_TIMEZONE: Asia/Seoul
     volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      # 알림 규칙(alerting)은 빼고 데이터 소스·대시보드만 (부하 테스트가 실제 텔레그램으로 알림을 보내지 않게)
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "127.0.0.1:3001:3000"

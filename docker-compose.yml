@@ -75,6 +75,9 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD 를 .env 에 설정하세요}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_DATE_FORMATS_DEFAULT_TIMEZONE: Asia/Seoul
+      # 알림 규칙(provisioning/alerting)이 텔레그램으로 보낼 때 쓴다
+      GRAFANA_ALERT_TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN 을 .env 에 설정하세요}
+      GRAFANA_ALERT_TELEGRAM_CHAT_ID: ${GRAFANA_ALERT_TELEGRAM_CHAT_ID:?GRAFANA_ALERT_TELEGRAM_CHAT_ID(알림 받을 텔레그램 chat id)를 .env 에 설정하세요}
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
