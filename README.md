@@ -48,7 +48,7 @@ flowchart LR
 
 - 기능을 만든 뒤 **운영에서 깨질 지점 17가지를 찾아 고쳤습니다**: 알림 유실·중복, 다중 서버, 속도 제한, 대량 데이터, 종료와 배포.
 - 매번 **문제를 재현하는 테스트를 먼저** 쓰고(수정 전 실패 확인), 고친 뒤 같은 테스트로 전후를 쟀습니다.
-- 표의 수치는 Testcontainers MySQL 8.4 통합 테스트로 재현·측정한 값입니다. 17번만 로컬 부하 테스트(가짜 텔레그램·가짜 크롤러, [loadtest/](loadtest/README.md))로 잰 값입니다. 둘 다 운영 부하 수치가 아닙니다. 운영 수치는 [배포·운영 가이드](docs/OPERATIONS.md)대로 모으는 중입니다.
+- 표의 수치는 Testcontainers MySQL 8.4 통합 테스트로 재현·측정한 값입니다. 17번만 로컬 부하 테스트(가짜 텔레그램·가짜 크롤러, [loadtest/](loadtest/README.md))로 잰 값입니다. 둘 다 운영 부하 수치가 아닙니다.
 - 테스트 **219건**, 커버리지 **라인 93.1% / 분기 83.0%** (JaCoCo, CI 실행 요약에 표시). 패키지 의존 규칙은 ArchUnit 으로 고정했습니다.
 - 개선마다 문제 → 원인 → 해결 → 결과 → 트러블슈팅 → 면접 질문 순서로 정리했습니다: **[노션 개선 기록](https://www.notion.so/4230a80660f1812c8eb5e4f1199b8baa)**
 
@@ -161,4 +161,4 @@ curl localhost:8081/actuator/health       # 로컬 실행 시
 curl localhost:8081/actuator/prometheus   # 지표 (notification_*, crawl_*)
 ```
 
-서버 배포, 지표 확인, 재배포 점검, 주간 운영 기록은 [배포·운영 가이드](docs/OPERATIONS.md)를 참고하세요.
+`docker compose up -d` 로 Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`, "Moviebot 운영" 대시보드)가 함께 뜹니다. Grafana 알림 규칙(앱 다운·발송 지연·발송 포기·크롤링 실패·주기 제한 시간 초과)은 `.env` 의 `GRAFANA_ALERT_TELEGRAM_CHAT_ID` 로 텔레그램 발송됩니다. 설정은 `monitoring/` 에 있습니다.

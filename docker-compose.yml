@@ -48,7 +48,7 @@ services:
     stop_grace_period: 60s
 
   # ── 모니터링 (Prometheus + Grafana) ──────────────────────────
-  # 두 포트 모두 127.0.0.1 에만 연다. 서버에서는 SSH 터널로 접속한다 (docs/OPERATIONS.md)
+  # 두 포트 모두 127.0.0.1 에만 연다. 서버에서는 SSH 터널로 접속한다 (ssh -L 3000:localhost:3000 -L 9090:localhost:9090 사용자@서버)
   prometheus:
     image: prom/prometheus:v2.53.0
     container_name: moviebot-prometheus
