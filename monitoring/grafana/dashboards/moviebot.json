@@ -14,12 +14,172 @@
   "panels": [
     {
       "type": "row",
-      "title": "알림 발송",
+      "title": "앱 상태",
       "collapsed": false,
       "panels": [],
       "gridPos": {
         "x": 0,
         "y": 0,
+        "w": 24,
+        "h": 1
+      }
+    },
+    {
+      "id": 20,
+      "title": "앱 생존",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Prometheus 가 앱 지표를 가져왔는지. 다운이면 앱이 죽었거나 응답하지 않는다. 데이터 없음이면 Prometheus 를 확인",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(up{job=\"moviebot\"})",
+          "legendFormat": "앱"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "데이터 없음",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "다운",
+                  "color": "red",
+                  "index": 0
+                },
+                "1": {
+                  "text": "정상",
+                  "color": "green",
+                  "index": 1
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 1,
+        "w": 6,
+        "h": 8
+      }
+    },
+    {
+      "id": 21,
+      "title": "가동 시간",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "마지막으로 시작한 뒤 지난 시간. 갑자기 0 에 가까워지면 재시작된 것",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(process_uptime_seconds{job=\"moviebot\"})",
+          "legendFormat": "가동 시간"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "데이터 없음"
+        },
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "none",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 1,
+        "w": 6,
+        "h": 8
+      }
+    },
+    {
+      "id": 22,
+      "title": "발생 중인 알림",
+      "type": "alertlist",
+      "description": "알림 규칙(Moviebot 폴더) 중 지금 발생 중인 것",
+      "options": {
+        "viewMode": "list",
+        "groupMode": "default",
+        "maxItems": 10,
+        "sortOrder": 1,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "",
+        "folder": null,
+        "stateFilter": {
+          "firing": true,
+          "pending": true,
+          "noData": true,
+          "normal": false,
+          "error": true
+        },
+        "showInstances": false
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 1,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "row",
+      "title": "알림 발송",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "x": 0,
+        "y": 9,
         "w": 24,
         "h": 1
       }
@@ -51,7 +211,7 @@
       "description": "sent / retry / rate_limited / dead / canceled",
       "gridPos": {
         "x": 0,
-        "y": 1,
+        "y": 10,
         "w": 12,
         "h": 8
       }
@@ -83,7 +243,7 @@
       "description": "PENDING 이 계속 쌓이면 발송 장애",
       "gridPos": {
         "x": 12,
-        "y": 1,
+        "y": 10,
         "w": 12,
         "h": 8
       }
@@ -117,7 +277,7 @@
       "description": "1분 이상 지속되면 발송 장애",
       "gridPos": {
         "x": 0,
-        "y": 9,
+        "y": 18,
         "w": 6,
         "h": 8
       }
@@ -148,7 +308,7 @@
       "options": {},
       "gridPos": {
         "x": 6,
-        "y": 9,
+        "y": 18,
         "w": 6,
         "h": 8
       }
@@ -190,7 +350,7 @@
       "options": {},
       "gridPos": {
         "x": 12,
-        "y": 9,
+        "y": 18,
         "w": 12,
         "h": 8
       }
@@ -202,7 +362,7 @@
       "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 17,
+        "y": 26,
         "w": 24,
         "h": 1
       }
@@ -235,7 +395,7 @@
       "options": {},
       "gridPos": {
         "x": 0,
-        "y": 18,
+        "y": 27,
         "w": 12,
         "h": 8
       }
@@ -267,7 +427,7 @@
       "description": "stage=\"cloudflare\" 또는 reason=\"http_403\" 은 차단 의심",
       "gridPos": {
         "x": 12,
-        "y": 18,
+        "y": 27,
         "w": 12,
         "h": 8
       }
@@ -299,7 +459,7 @@
       "description": "0 이 정상",
       "gridPos": {
         "x": 0,
-        "y": 26,
+        "y": 35,
         "w": 6,
         "h": 8
       }
@@ -330,7 +490,7 @@
       "options": {},
       "gridPos": {
         "x": 6,
-        "y": 26,
+        "y": 35,
         "w": 6,
         "h": 8
       }
@@ -342,7 +502,7 @@
       "panels": [],
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 43,
         "w": 24,
         "h": 1
       }
@@ -391,7 +551,7 @@
       "options": {},
       "gridPos": {
         "x": 0,
-        "y": 35,
+        "y": 44,
         "w": 12,
         "h": 8
       }
@@ -433,7 +593,7 @@
       "options": {},
       "gridPos": {
         "x": 12,
-        "y": 35,
+        "y": 44,
         "w": 12,
         "h": 8
       }
