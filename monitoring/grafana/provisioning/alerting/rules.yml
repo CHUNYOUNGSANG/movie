@@ -1,0 +1,144 @@
+# 알림 규칙. 1분마다 평가하고, 조건이 "for" 동안 이어지면 텔레그램으로 보낸다
+# 지표가 아직 없으면(실패가 한 번도 없음) 정상으로 본다. 앱 다운만 "데이터 없음"도 알림
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: moviebot
+    folder: Moviebot
+    interval: 1m
+    rules:
+      - uid: moviebot-app-down
+        title: 앱 다운
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max(up{job="moviebot"})'
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "앱이 2분 넘게 응답하지 않습니다"
+          description: 'Prometheus 가 app:8081/actuator/prometheus 를 가져오지 못했습니다. `docker compose ps`, `docker compose logs app` 확인'
+      - uid: moviebot-outbox-delay
+        title: 알림 발송 지연
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'max(notification_outbox_oldest_pending_age_seconds)'
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [600] }
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "보내지 못한 알림이 10분 넘게 기다리고 있습니다"
+          description: '텔레그램 장애·429 또는 relay 정지. 대시보드 "Outbox 상태별 건수"와 앱 로그 확인'
+      - uid: moviebot-delivery-dead
+        title: 알림 발송 포기
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'sum(increase(notification_delivery_seconds_count{result="dead"}[10m]))'
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "재시도 한도를 넘겨 보내지 못한 알림이 생겼습니다"
+          description: '사용자가 알림을 받지 못했습니다. notification_outbox 의 DEAD 행과 last_error 확인'
+      - uid: moviebot-crawl-errors
+        title: 크롤링 실패 반복
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'sum(increase(crawl_errors_total[30m]))'
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "30분 동안 크롤링이 3번 이상 실패했습니다"
+          description: 'CGV 차단 또는 브라우저 오류일 수 있습니다. 대시보드 "크롤링 실패 (원인별)" 확인'
+      - uid: moviebot-cycle-timeout
+        title: 확인 주기 제한 시간 초과
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 'sum(increase(crawl_cycle_timeout_total[1h]))'
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Alerting
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "확인 주기가 제한 시간을 넘겨 일부 크롤링을 다음 주기로 넘겼습니다"
+          description: '크롤링 그룹이 많아졌거나 CGV 응답이 느려졌습니다. "크롤링 평균 소요 시간" 확인'

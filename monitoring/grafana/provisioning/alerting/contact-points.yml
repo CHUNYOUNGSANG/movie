@@ -1,0 +1,13 @@
+# 알림 받을 곳: 텔레그램 (봇 토큰·chat id 는 .env 에서 docker-compose 가 넣어 준다, 커밋 금지)
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: telegram
+    receivers:
+      - uid: moviebot-telegram
+        type: telegram
+        settings:
+          bottoken: ${GRAFANA_ALERT_TELEGRAM_BOT_TOKEN}
+          # Grafana 는 환경 변수를 넣은 뒤 값을 다시 해석해 숫자로 바꾼다. 따옴표를 값 안에 넣어 문자열로 남긴다
+          chatid: '"${GRAFANA_ALERT_TELEGRAM_CHAT_ID}"'
+        disableResolveMessage: false   # 해결되면 "RESOLVED" 도 보낸다
