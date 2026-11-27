@@ -4,6 +4,17 @@
 
 CGV 상영 일정을 주기적으로 크롤링해서, 신청한 조건(영화 / 지점 / 상영관 / 날짜)의 **예매가 열리면 텔레그램으로 바로 알려주는 봇**입니다.
 
+## 프로젝트 소개
+
+인기 영화의 특별관(IMAX 등) 예매는 언제 열릴지 몰라 계속 새로고침해야 합니다. 텔레그램으로 영화·지점·상영관·날짜를 신청해 두면, 봇이 5분마다 CGV 상영 일정을 확인해 **예매가 열리는 순간 알림**을 보냅니다.
+
+| 항목 | 내용 |
+|---|---|
+| 기간 | 2026.09 ~ 2026.11 (약 12주) |
+| 인원 | 개인 프로젝트 (기획 · 설계 · 구현 · 테스트 · 배포) |
+| 핵심 | 알림 유실·중복 없는 발송 (Transactional Outbox), 다중 서버 동시성, 텔레그램 속도 제한 대응 |
+| 품질 | 테스트 219건, 커버리지 라인 93.1% / 분기 83.0%, 패키지 의존 규칙 ArchUnit 고정 |
+
 ## 주요 기능
 
 텔레그램 봇에 명령어를 보내 사용합니다.
@@ -19,39 +30,82 @@ CGV 상영 일정을 주기적으로 크롤링해서, 신청한 조건(영화 / 
 
 ## 기술 스택
 
-- **Backend**: Java 17, Spring Boot 4.1, Spring Data JPA, Flyway
-- **DB**: MySQL 8.4 (운영 / 로컬·테스트는 Testcontainers)
-- **Crawling**: Playwright (Chromium)
-- **Messaging**: Telegram Bot API
-- **Concurrency**: ShedLock (DB 기반 분산 락), 크롤링 전용 스레드풀
-- **Security**: Spring Security, OAuth2 Resource Server (JWT), 텔레그램 로그인 서명 검증
-- **Infra**: Docker (non-root, HEALTHCHECK), Docker Compose, GitHub Actions (테스트 + 커버리지 + 이미지 빌드)
-- **Monitoring**: Spring Boot Actuator, Micrometer (Prometheus)
-- **Test**: JUnit 5, Testcontainers (MySQL 8.4), ArchUnit, JaCoCo
+| 분야 | 기술 |
+|---|---|
+| Backend | ![Java](https://img.shields.io/badge/Java-17-007396?style=flat-square&logo=openjdk&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring_Boot-4.1-6DB33F?style=flat-square&logo=springboot&logoColor=white) ![Spring Data JPA](https://img.shields.io/badge/Spring_Data_JPA-Hibernate-59666C?style=flat-square&logo=hibernate&logoColor=white) ![Flyway](https://img.shields.io/badge/Flyway-migration-CC0200?style=flat-square&logo=flyway&logoColor=white) |
+| Database | ![MySQL](https://img.shields.io/badge/MySQL-8.4-4479A1?style=flat-square&logo=mysql&logoColor=white) |
+| Security | ![Spring Security](https://img.shields.io/badge/Spring_Security-JWT-6DB33F?style=flat-square&logo=springsecurity&logoColor=white) |
+| Crawling | ![Playwright](https://img.shields.io/badge/Playwright-Chromium-2EAD33?style=flat-square) |
+| Messaging | ![Telegram](https://img.shields.io/badge/Telegram-Bot_API-26A5E4?style=flat-square&logo=telegram&logoColor=white) |
+| Concurrency | ![ShedLock](https://img.shields.io/badge/ShedLock-DB_lock-555555?style=flat-square) |
+| Infra / CI | ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white) ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI-2088FF?style=flat-square&logo=githubactions&logoColor=white) |
+| Monitoring | ![Prometheus](https://img.shields.io/badge/Prometheus-Micrometer-E6522C?style=flat-square&logo=prometheus&logoColor=white) ![Grafana](https://img.shields.io/badge/Grafana-11-F46800?style=flat-square&logo=grafana&logoColor=white) |
+| Test | ![JUnit](https://img.shields.io/badge/JUnit-5-25A162?style=flat-square&logo=junit5&logoColor=white) ![Testcontainers](https://img.shields.io/badge/Testcontainers-MySQL-291A3F?style=flat-square&logo=testcontainers&logoColor=white) ![ArchUnit](https://img.shields.io/badge/ArchUnit-rules-555555?style=flat-square) ![JaCoCo](https://img.shields.io/badge/JaCoCo-coverage-555555?style=flat-square) |
+
+## 시스템 아키텍처
+
+![시스템 아키텍처](docs/images/architecture.png)
+
+| 구성 | 역할 |
+|---|---|
+| 사용자 ↔ Telegram | 사용자는 텔레그램 봇으로 명령(`/add` 등)을 보내고 알림을 받습니다. 별도 웹 화면은 없습니다 |
+| Spring Boot 앱 | 3초마다 텔레그램에서 명령을 가져오고(폴링), 5분마다 CGV 를 크롤링해 예매가 열린 신청을 찾아 알림을 보냅니다 |
+| CGV | Cloudflare 확인을 통과한 브라우저 세션이 있어야 조회돼, Playwright(헤드리스 Chromium)로 크롤링합니다 |
+| MySQL | 신청·상영 일정·보낼 알림(Outbox)을 저장합니다. 매칭과 Outbox 기록을 한 트랜잭션으로 묶어 알림이 사라지거나 두 번 가지 않게 합니다 |
+| Prometheus | 15초마다 앱의 지표(`/actuator/prometheus`)를 가져와 30일 보관합니다 |
+| Grafana | 대시보드로 발송·크롤링·DB 상태를 보여 주고, 앱 다운·발송 지연 같은 장애를 텔레그램으로 알립니다 |
+| 운영자 | 모니터링 포트는 서버 안(`127.0.0.1`)에만 열려 있어 SSH 터널로 Grafana 에 접속합니다 |
+| GitHub Actions | PR 마다 테스트·커버리지 요약·Docker 이미지 빌드를 확인합니다 |
+
+- 앱, MySQL, Prometheus, Grafana 는 서버 한 대에서 Docker Compose 로 함께 뜹니다.
+- 실선은 서비스 흐름, 점선은 모니터링 흐름입니다.
 
 ## 동작 흐름
 
 ```mermaid
 flowchart LR
     S["@Scheduled (5분)<br/>ShedLock"] --> P["대기 그룹 조회<br/>(DTO 프로젝션)"]
-    P --> G["병렬 크롤링 스레드풀<br/>주기 제한 시간"]
+    P --> G["병렬 크롤링 스레드풀<br/>주기 제한 시간 8분"]
     G --> C["CGV 크롤링 (Playwright)<br/>트랜잭션 밖"]
     C --> D["스케줄 저장 / 구독 매칭<br/>짧은 트랜잭션"]
     D -- 같은 트랜잭션 --> O[(Outbox)]
-    D -- AFTER_COMMIT 이벤트 --> L["발송 리스너 (@Async)"]
-    O -. 누락분/재시도 .-> R["Relay 스케줄러"]
-    L --> T[Telegram API]
-    R --> T
+    D -- AFTER_COMMIT 이벤트 --> L["즉시 발송 (@Async)<br/>스레드풀이 차면 PENDING 으로 남김"]
+    O -. 남은 알림 · 재시도 .-> R["Relay (10초마다)<br/>남으면 쉬지 않고 이어서 · 8개 병렬"]
+    L --> RL["속도 제한<br/>초당 25건 · 429 시 멈춤"]
+    R --> RL
+    RL --> T[Telegram API]
 ```
 
-## 한눈에 보기
+## 프로젝트 구조
+
+```txt
+src/main/java/io/github/chunyoungsang/moviebot
+├── domain/                    # 비즈니스 로직. 외부 기술을 모르고 포트(인터페이스)만 정의
+│   ├── movie/                 # 영화·지점·상영관·상영 일정, crawler/MovieCrawler (포트)
+│   ├── notification/          # 알림 신청·매칭·이력, 보관 정책, 스케줄러
+│   │   ├── outbox/            # Transactional Outbox: 기록 · 즉시 발송 · relay · 재시도 · 지표
+│   │   └── sender/            # MessageSender (발송 포트)
+│   └── user/                  # 텔레그램 chatId 기준 사용자
+├── infra/                     # 외부 연동. domain 의 포트를 구현
+│   ├── cgv/                   # CgvCrawler (Playwright)
+│   ├── telegram/              # 클라이언트(속도 제한·429), 봇 명령어, 로그인 서명 검증
+│   └── loadtest/              # 부하 테스트 전용 가짜 크롤러 (loadtest 프로필)
+└── global/                    # 공통 설정(스레드풀·시계), 예외 처리, 보안(JWT)
+
+src/main/resources/db/migration   # Flyway 마이그레이션 (V1 ~ V6)
+monitoring/                       # Prometheus 수집 설정, Grafana 대시보드·알림 규칙
+loadtest/                         # 부하 테스트: 가짜 텔레그램 서버, 시드 데이터, 측정 스크립트
+```
+
+- 의존 방향은 `infra → domain`, `global` 은 둘 다 모릅니다. `architecture/ArchitectureTest`(ArchUnit) 가 검사합니다.
+
+## 개선 방식
 
 - 기능을 만든 뒤 **운영에서 깨질 지점 17가지를 찾아 고쳤습니다**: 알림 유실·중복, 다중 서버, 속도 제한, 대량 데이터, 종료와 배포.
 - 매번 **문제를 재현하는 테스트를 먼저** 쓰고(수정 전 실패 확인), 고친 뒤 같은 테스트로 전후를 쟀습니다.
-- 표의 수치는 Testcontainers MySQL 8.4 통합 테스트로 재현·측정한 값입니다. 17번만 로컬 부하 테스트(가짜 텔레그램·가짜 크롤러, [loadtest/](loadtest/README.md))로 잰 값입니다. 둘 다 운영 부하 수치가 아닙니다.
-- 테스트 **219건**, 커버리지 **라인 93.1% / 분기 83.0%** (JaCoCo, CI 실행 요약에 표시). 패키지 의존 규칙은 ArchUnit 으로 고정했습니다.
+- 아래 수치는 Testcontainers MySQL 8.4 통합 테스트로 재현·측정한 값입니다. 5번만 로컬 부하 테스트(가짜 텔레그램·가짜 크롤러)로 쟀습니다. 둘 다 운영 부하 수치가 아닙니다.
 
-## 대표 개선 4가지
+## 대표 개선 5가지
 
 ### 1. 알림이 사라지거나 두 번 가지 않게: 트랜잭션 범위 분리 + Transactional Outbox
 
@@ -109,27 +163,23 @@ graceful shutdown 을 넣으려고 재현해 보니 숨은 버그 두 개가 나
 - 트러블슈팅: `await-termination` 을 덧댔더니 Spring 6.1+ 가 일시 정지한 스레드를 40초씩 기다려 테스트가 1분 → 10분 이상. 스레드 덤프로 찾고 설정을 뺌
 - non-root 실행, HEALTHCHECK, CI 에 커버리지와 이미지 빌드 추가
 
-## 전체 개선 기록
+### 5. 알림이 몰릴 때: 부하 테스트 지표로 찾은 relay 병목
 
-| # | 주제 | 핵심 결과 (재현 테스트) |
+가짜 텔레그램 서버(초당 30건 넘으면 429)와 가짜 크롤러로 알림 5,000건을 한꺼번에 만들고 Grafana 로 지켜봤습니다. 발송 속도가 1분 뒤 초당 25건에서 약 3건으로 떨어졌고, 429 는 0건이라 막힌 곳은 앱 안쪽이었습니다.
+
+| 지표 (알림 5,000건, 로컬 부하 테스트) | Before | After |
 |---|---|---|
-| 1 | 알림 유실·중복 방지와 트랜잭션 범위 분리 | 크롤링 중 커넥션 점유 1 → 0, 중복 발송 2 → 1회 |
-| 2 | Transactional Outbox 와 재시도 정책 | 커밋 직후 유실 → relay 발송, 무한 재시도 → 최대 횟수 |
-| 3 | 크롤링 결과 저장 벌크 처리 | 100건 저장 쿼리 514 → 8회, 500건 366ms → 21ms |
-| 4 | 다중 서버 동시 실행 (조건부 UPDATE + ShedLock) | 중복 2 → 1건, MySQL 데드락 제거 |
-| 5 | 텔레그램 발송 속도 제한 대응 | 100건 동시 발송 시 포기 70 → 0건, 429 350 → 0회 |
-| 6 | 크롤링 병렬화 (스레드별 브라우저 세션) | 그룹 10개 5.58 → 2.09초 |
-| 7 | 모니터링 (헬스 체크 + 지표) | 발송 포기를 알 방법: WARN 로그뿐 → 지표 3종 |
-| 8 | 크롤러 오류 감지 | 차단·브라우저 실패가 "상영 없음"과 구분 안 됨 → 예외 + 원인별 지표 |
-| 9 | 패키지 구조 정리 (domain / infra / global, SOLID, 예외 체계) | 의존 규칙 위반 1 / 11 / 3 → 0 / 0 / 0건 |
-| 10 | Outbox 역할 분리 | 패키지 1개에 역할 6가지 → 하위 패키지 6개, 경계 ArchUnit 고정 |
-| 11 | API 인증 (텔레그램 로그인 서명 검증 + JWT) | 토큰 없이 남의 데이터 조회·취소 → 401 / 403 |
-| 12 | 비활성 사용자 알림 | `/stop` 한 사용자에게 발송 1 → 0건, 봇 차단 시 자동 해제 |
-| 13 | 알림 신청 수명과 입력 검증 | 지난 신청 5분마다 크롤링 → 0회, 잘못된 신청 저장·500 → 400, 중복 신청 → 409 |
-| 14 | 크롤링 주기의 대량 처리 | 읽은 엔티티 6,050 → 0개, 주기 152 → 32ms |
-| 15 | 데이터 보관 정책 | 약 1년치 schedules 21,000 → 1,000행 |
-| 16 | 배포 안정성 (graceful shutdown, non-root, CI) | 종료 후 주기 15초+ 대기 → 10ms, 이미지 시작 실패 → healthy |
-| 17 | Outbox relay 처리량 (부하 테스트 + Grafana) | 알림 5,000건 전체 발송 1,265 → 236초, 최대 지연 1,233 → 204초 (로컬 부하 테스트) |
+| 전체 발송 시간 | 1,265초 (약 21분) | **236초** (이론상 최선 200초) |
+| 초당 발송 | 4.0건 | **21.2건** |
+| 알림 지연 p95 | 1,158초 | **195초** |
+| 알림 지연 최대 | 1,233초 | **204초** |
+| 429 / 발송 포기 | 0 / 0 | 0 / 0 |
+
+- 원인: 즉시 발송 스레드풀(동시 20 + 대기 200)을 넘친 약 3,900건이 relay 로 넘어갔는데, relay 가 "10초마다 50건, 한 스레드에서 차례로" 보내 초당 약 3.3건에 묶였다
+- 해결: 남아 있으면 다음 실행을 기다리지 않고 이어서 꺼내고(한 번에 최대 1분), 한 묶음을 relay 전용 스레드 8개로 동시에 발송. 전체 속도는 기존 속도 제한(초당 25건)이 그대로 지킨다
+- 즉시 발송 대기열을 키우는 대신 relay 를 고친 이유: 메모리 대기열은 서버가 죽으면 사라진다. 대기열은 DB(Outbox)에 두고 속도는 제한기가 맡는다
+- 측정 방법: 같은 부하 테스트 코드에서 relay 파일만 개선 전으로 되돌린 이미지를 따로 만들어, 같은 조건으로 연달아 쟀다 ([loadtest/](loadtest/README.md))
+- 한계: 가짜 서버(응답 50ms)로 잰 값이다. 운영 부하 수치가 아니다
 
 ## 실행 방법
 
