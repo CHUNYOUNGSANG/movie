@@ -83,6 +83,22 @@ docker compose exec app curl -s localhost:8081/actuator/prometheus | grep -E "^(
 ssh -L 3000:localhost:3000 -L 9090:localhost:9090 사용자@서버주소
 ```
 
+#### 알림 규칙 (Grafana → 텔레그램)
+
+`monitoring/grafana/provisioning/alerting/` 에 파일로 관리한다. 1분마다 평가해 조건이 이어지면 봇이 `.env` 의 `GRAFANA_ALERT_TELEGRAM_CHAT_ID`(내 chat id, `users.chat_id`) 로 보내고, 해결되면 RESOLVED 를 보낸다. 같은 알림은 4시간에 한 번만 다시 온다.
+
+| 알림 | 조건 | 받으면 |
+|---|---|---|
+| 앱 다운 | 2분 넘게 지표 수집 실패 (데이터 없음도 포함) | `docker compose ps`, `docker compose logs app` |
+| 알림 발송 지연 | 가장 오래 기다린 알림이 10분 넘는 상태가 5분 | Outbox 상태별 건수, 텔레그램 429 여부 |
+| 알림 발송 포기 | 10분 안에 DEAD 1건 이상 | `notification_outbox` 의 DEAD 행과 `last_error` |
+| 크롤링 실패 반복 | 30분 안에 크롤링 실패 3번 이상 | 크롤링 실패 (원인별): CGV 차단·브라우저 오류 |
+| 확인 주기 제한 시간 초과 | 1시간 안에 1번 이상 | 크롤링 그룹 수, CGV 응답 속도 |
+
+- 실패 지표는 한 번도 실패가 없으면 아직 없다. 그래서 앱 다운 외에는 "데이터 없음"을 정상으로 본다.
+- chat id 는 Grafana 가 숫자로 바꿔 읽어 실패하므로 `'"${...}"'` 처럼 따옴표를 값 안에 넣었다. 지우면 Grafana 가 시작하지 못하고 재시작을 반복한다.
+- 부하 테스트 Grafana(`docker-compose.loadtest.yml`)는 알림 규칙을 읽지 않는다.
+
 Prometheus 는 띄운 시점부터 저장하므로 처음에는 그래프가 비어 있다. 대시보드(`monitoring/grafana/dashboards/moviebot.json`)는 파일로 관리하며, 화면에서 고친 내용은 저장되지 않는다 (JSON 을 내보내 파일을 바꾼다).
 
 PromQL 예:
