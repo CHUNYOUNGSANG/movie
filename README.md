@@ -15,18 +15,39 @@ CGV 상영 일정을 주기적으로 크롤링해서, 신청한 조건(영화 / 
 | 핵심 | 알림 유실·중복 없는 발송 (Transactional Outbox), 다중 서버 동시성, 텔레그램 속도 제한 대응 |
 | 품질 | 테스트 219건, 커버리지 라인 93.1% / 분기 83.0%, 패키지 의존 규칙 ArchUnit 고정 |
 
-## 주요 기능
+## 주요 기능 · 사용법
 
 텔레그램 봇에 명령어를 보내 사용합니다.
 
 | 명령어 | 설명 |
 |---|---|
 | `/start` | 알림 구독 시작 |
-| `/add [영화] [날짜] [지점] [관]` | 알림 신청 (지점, 관은 선택). 예: `/add 위키드 2026-12-24 영등포 IMAX` |
+| `/add [영화] [날짜] [지점] [관]` | 알림 신청. 지점·관은 선택, 제목에 띄어쓰기 가능 |
 | `/list` | 대기 중인 알림 목록 |
 | `/history` | 완료된 알림 목록 |
 | `/cancel [번호]` | 알림 취소 |
 | `/stop` | 구독 해제 |
+| `/help` | 사용법 안내 |
+
+**사용 예시**
+
+<table>
+  <tr>
+    <th>1. 구독 시작 (/start)</th>
+    <th>2. 알림 신청 (/add)</th>
+    <th>3. 예매 오픈 알림</th>
+  </tr>
+  <tr>
+    <td><img src="docs/images/telegram-start.png" width="280" alt="/start 응답"></td>
+    <td><img src="docs/images/telegram-add.png" width="280" alt="/add 응답"></td>
+    <td><img src="docs/images/telegram-alert.png" width="280" alt="예매 오픈 알림"></td>
+  </tr>
+</table>
+
+- 날짜는 `YYYY-MM-DD`. 날짜 앞까지가 영화 제목입니다.
+- **지원 지점: CGV 서울 8곳** (영등포, 용산, 강남, 홍대, 신촌, 왕십리, 건대입구, 여의도). 지점을 빼거나 목록에 없는 지점을 쓰면 8곳 전체를 확인합니다.
+- 관(IMAX, 4DX 등)을 빼면 모든 관을 확인합니다. 상영일이 지나면 신청은 자동으로 만료되고 안내가 갑니다.
+- 웹 확장용 REST API 도 있습니다: `POST /api/auth/telegram`(텔레그램 로그인 서명 검증 → JWT 발급), `POST · GET · DELETE /api/notifications`(JWT 필요, 내 신청만 조회·취소).
 
 ## 기술 스택
 
@@ -99,107 +120,84 @@ loadtest/                         # 부하 테스트: 가짜 텔레그램 서버
 
 - 의존 방향은 `infra → domain`, `global` 은 둘 다 모릅니다. `architecture/ArchitectureTest`(ArchUnit) 가 검사합니다.
 
-## 개선 방식
+## 핵심 개선
 
-- 기능을 만든 뒤 **운영에서 깨질 지점 17가지를 찾아 고쳤습니다**: 알림 유실·중복, 다중 서버, 속도 제한, 대량 데이터, 종료와 배포.
-- 매번 **문제를 재현하는 테스트를 먼저** 쓰고(수정 전 실패 확인), 고친 뒤 같은 테스트로 전후를 쟀습니다.
-- 아래 수치는 Testcontainers MySQL 8.4 통합 테스트로 재현·측정한 값입니다. 5번만 로컬 부하 테스트(가짜 텔레그램·가짜 크롤러)로 쟀습니다. 둘 다 운영 부하 수치가 아닙니다.
+기능을 만든 뒤 운영에서 깨질 지점을 찾아, 매번 **문제를 재현하는 테스트를 먼저** 쓰고 고친 뒤 전후를 쟀습니다.
 
-## 대표 개선 5가지
+- **알림 유실·중복 방지**: 크롤링을 트랜잭션 밖으로 빼고 Transactional Outbox 도입 → 중복 발송 2 → 1회, 발송 실패 시 영구 유실 → 재시도
+- **다중 서버 동시성**: 조건부 UPDATE 선점 + ShedLock → 중복 알림·MySQL 데드락 제거
+- **대량 데이터 조회**: 그룹만 DTO 로 조회 + 실행 계획으로 옵티마이저 추정 오류 해결 → 주기 152 → 32ms
+- **배포 안정성**: 종료 시 멈추던 크롤링 주기 수정, non-root Docker 이미지 → 종료 대기 15초+ → 10ms
+- **발송 처리량**: 부하 테스트 지표로 relay 병목 발견 → 알림 5,000건 전체 발송 1,265 → 236초
 
-### 1. 알림이 사라지거나 두 번 가지 않게: 트랜잭션 범위 분리 + Transactional Outbox
+> 수치는 Testcontainers MySQL 8.4 통합 테스트와 로컬 부하 테스트([loadtest/](loadtest/README.md))로 잰 값입니다. 운영 부하 수치가 아닙니다.
 
-크롤링(외부 I/O)과 발송이 하나의 긴 트랜잭션에 묶여 있어, 발송 실패는 삼켜지고 롤백되면 같은 알림이 다시 나갔습니다.
+## 한계
 
-| 시나리오 (재현 테스트) | Before | After |
-|---|---|---|
-| 크롤링 중 점유 중인 DB 커넥션 | 1개 | **0개** |
-| 처리 도중 예외 → 다음 주기 | 같은 알림 2회 발송 | **1회** |
-| 텔레그램 발송 실패 | SUCCESS 기록, 영구 유실 | **FAIL 기록 후 재시도** |
-| 커밋 직후 발송 리스너 유실 | 영구 유실 | **relay 가 발송** |
-| 사용자가 봇 차단(403) | 5주기 내내 재시도 | **1회 후 중단** |
+- 지원 지점이 코드에 고정된 8곳입니다. 지점을 늘리려면 CGV 지점 번호를 추가해야 합니다.
+- CGV 화면·API 구조가 바뀌면 크롤러를 고쳐야 합니다. 바뀐 걸 바로 알 수 있게 크롤링 실패를 지표로 모으고 Grafana 알림을 걸어 두었습니다.
+- 발송 속도 제한(초당 25건)이 서버 메모리에 있습니다. 서버가 여러 대면 합산 속도가 텔레그램 한도를 넘을 수 있어, 공유 속도 제한(예: Redis)이 필요합니다.
+- 봇 하나의 텔레그램 한도(초당 약 30건) 때문에 알림이 수만 건 몰리면 발송에 수십 분이 걸립니다.
 
-- 크롤링을 트랜잭션 밖으로 빼고, 구독 상태 변경과 보낼 메시지를 같은 트랜잭션으로 `notification_outbox` 에 기록
-- 커밋 후 즉시 발송, 누락분·재시도는 relay 가 처리 (조건부 UPDATE 선점, 지수 백오프, 4xx 는 영구 실패)
-- 트러블슈팅: `NOT_SUPPORTED` 만으로는 커넥션이 반납되지 않았다. 직접 선언한 쿼리 메서드는 트랜잭션이 없어 `EntityManager` 가 커넥션을 붙잡았기 때문 (측정으로 발견)
+## 설정 및 실행
 
-### 2. 서버가 두 대일 때: 조건부 UPDATE 선점 + ShedLock
+### 1. 필요한 것
 
-`@Scheduled` 는 JVM 하나 안에서만 겹치지 않습니다. 서버 2대를 스레드 2개로 흉내 내 재현했습니다.
+- Docker (Docker Desktop 또는 OrbStack)
+- 로컬에서 직접 실행·테스트하려면 Java 17
 
-| 시나리오 (서버 2대 동시 실행) | Before | After |
-|---|---|---|
-| 같은 구독 동시 매칭 (H2) | 알림 2건 (중복 발송) | **1건** |
-| 같은 구독 동시 매칭 (MySQL 8.4) | 데드락 → 매칭 트랜잭션 롤백 | **1건, 데드락 없음** |
-| 크롤링 스케줄러 동시 실행 | 크롤링 2회 | **1회** |
+### 2. 텔레그램 봇 만들기
 
-- 읽은 값으로 판단하던 것을 조건부 UPDATE 의 영향 행 수로 선점
-- MySQL 데드락 원인: Hibernate 가 INSERT 를 먼저 flush → 외래키 검사로 부모 행에 S 락 → 둘 다 X 락으로 올리려다 교착. X 락을 먼저 잡아 해결
-- 크롤링·폴링은 ShedLock(DB 시간 기준), 폴링 offset 은 DB 로 옮겨 서버 간 공유. 정확성은 락이 아니라 DB 조건으로 보장
+1. 텔레그램에서 [@BotFather](https://t.me/BotFather) 에게 `/newbot` → 이름 입력 → **봇 토큰** 발급
+2. 내 chat id 확인: [@userinfobot](https://t.me/userinfobot) 에게 아무 메시지나 보내면 `Id` 가 나옵니다 (Grafana 장애 알림을 받을 곳)
 
-### 3. 데이터가 쌓였을 때: 그룹만 조회 + 실행 계획으로 찾은 옵티마이저 추정 오류
-
-매 주기 대기 신청 전체를 엔티티로 읽던 것을, 크롤링에 필요한 그룹만 DTO 로 조회하도록 바꿨습니다.
-
-| 항목 (신청 5만, 대기 5천) | Before | After |
-|---|---|---|
-| 평소 주기에 읽은 엔티티 | 6,050개 | **0개** (주기 152ms → 32ms) |
-| 대기 신청 조회 실행 계획 | users 전체(ALL) → 사용자별 신청 | **신청 인덱스 범위 5,000행 → users(PK)** |
-| 느린 주기 (그룹 10 × 300ms, 제한 1초) | 3,060ms, 끝까지 대기 | **1,015ms**, 남은 크롤링은 다음 주기 |
-
-- 인덱스를 추가해도 계획이 바뀌지 않았다. `EXPLAIN ANALYZE` 로 보니 옵티마이저가 인덱스 없는 `users.active` 의 선택도를 기본값 10% 로 추정 → `users.active` 인덱스로 실제 분포 기반 계획을 쓰게 함
-- 주기 제한 시간(8분, ShedLock 10분보다 짧게), 쌓이던 테이블엔 보관 정책(1,000건 배치 삭제)
-
-### 4. 재배포할 때: 종료하면 멈추던 주기, 시작되지 않던 Docker 이미지
-
-graceful shutdown 을 넣으려고 재현해 보니 숨은 버그 두 개가 나왔습니다.
-
-| 항목 | Before | After |
-|---|---|---|
-| 종료 신호 후 크롤링 주기 종료 (재현 테스트) | 15초 넘게 끝나지 않음, ShedLock 락 10분 잔존 | **10~15ms**, 새 크롤링 0회 |
-| Docker 이미지로 앱 시작 | 실패 (`lombok.config` 누락) | **healthy**, `docker stop` 0.2초 |
-
-- `ExecutorCompletionService` + 스레드풀 종료: 스레드풀이 바깥 `QueueingFuture` 를 취소하면, 실행되지 않은 안쪽 `FutureTask` 가 완료 큐에 들어가 `get()` 이 영원히 대기 → 종료 신호를 받으면 시작 안 한 크롤링을 취소하고 0.2초 안에 주기를 끝냄
-- 트러블슈팅: `await-termination` 을 덧댔더니 Spring 6.1+ 가 일시 정지한 스레드를 40초씩 기다려 테스트가 1분 → 10분 이상. 스레드 덤프로 찾고 설정을 뺌
-- non-root 실행, HEALTHCHECK, CI 에 커버리지와 이미지 빌드 추가
-
-### 5. 알림이 몰릴 때: 부하 테스트 지표로 찾은 relay 병목
-
-가짜 텔레그램 서버(초당 30건 넘으면 429)와 가짜 크롤러로 알림 5,000건을 한꺼번에 만들고 Grafana 로 지켜봤습니다. 발송 속도가 1분 뒤 초당 25건에서 약 3건으로 떨어졌고, 429 는 0건이라 막힌 곳은 앱 안쪽이었습니다.
-
-| 지표 (알림 5,000건, 로컬 부하 테스트) | Before | After |
-|---|---|---|
-| 전체 발송 시간 | 1,265초 (약 21분) | **236초** (이론상 최선 200초) |
-| 초당 발송 | 4.0건 | **21.2건** |
-| 알림 지연 p95 | 1,158초 | **195초** |
-| 알림 지연 최대 | 1,233초 | **204초** |
-| 429 / 발송 포기 | 0 / 0 | 0 / 0 |
-
-- 원인: 즉시 발송 스레드풀(동시 20 + 대기 200)을 넘친 약 3,900건이 relay 로 넘어갔는데, relay 가 "10초마다 50건, 한 스레드에서 차례로" 보내 초당 약 3.3건에 묶였다
-- 해결: 남아 있으면 다음 실행을 기다리지 않고 이어서 꺼내고(한 번에 최대 1분), 한 묶음을 relay 전용 스레드 8개로 동시에 발송. 전체 속도는 기존 속도 제한(초당 25건)이 그대로 지킨다
-- 즉시 발송 대기열을 키우는 대신 relay 를 고친 이유: 메모리 대기열은 서버가 죽으면 사라진다. 대기열은 DB(Outbox)에 두고 속도는 제한기가 맡는다
-- 측정 방법: 같은 부하 테스트 코드에서 relay 파일만 개선 전으로 되돌린 이미지를 따로 만들어, 같은 조건으로 연달아 쟀다 ([loadtest/](loadtest/README.md))
-- 한계: 가짜 서버(응답 50ms)로 잰 값이다. 운영 부하 수치가 아니다
-
-## 실행 방법
+### 3. `.env` 설정
 
 ```bash
-cp .env.example .env        # TELEGRAM_BOT_TOKEN 등 입력
-docker compose up -d --build
+cp .env.example .env
 ```
 
-로컬 실행 / 테스트 (Docker 필요, MySQL 8.4 컨테이너가 자동으로 뜨고 종료 시 정리됨):
+| 변수 | 필수 | 설명 |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | ✅ | BotFather 에서 받은 봇 토큰 |
+| `DB_ROOT_PASSWORD`, `DB_USER`, `DB_PASSWORD` | ✅ | MySQL 계정 (처음 뜰 때 이 값으로 만들어짐) |
+| `GRAFANA_ADMIN_PASSWORD` | ✅ | Grafana 관리자 비밀번호 (예: `openssl rand -base64 18`) |
+| `GRAFANA_ALERT_TELEGRAM_CHAT_ID` | ✅ | 장애 알림을 받을 내 chat id |
+| `GRAFANA_ADMIN_USER` | | Grafana 관리자 아이디 (기본 `admin`) |
+| `AUTH_JWT_SECRET` | | REST API 토큰 서명 키, 32자 이상. 비우면 재시작마다 새로 만들어짐 |
+| `MOVIE_CHECK_CRON` | | CGV 확인 주기 (기본 5분: `0 */5 * * * *`) |
+
+`.env` 에는 토큰·비밀번호가 들어가므로 커밋하지 않습니다 (`.gitignore` 에 포함).
+
+### 4. 실행
 
 ```bash
-./gradlew bootTestRun       # Testcontainers MySQL 로 앱 실행
-./gradlew test              # 통합 테스트도 MySQL 8.4 컨테이너에서 실행
+docker compose up -d --build    # 앱 + MySQL + Prometheus + Grafana
+docker compose ps               # app·db 가 (healthy) 이면 정상
+docker compose logs -f app      # 로그 보기
 ```
 
-모니터링 엔드포인트 (관리용 포트 8081, docker compose 에서는 호스트에 공개하지 않음):
+봇에게 `/start` 를 보내 응답이 오면 준비 완료입니다.
+
+| 화면 | 주소 |
+|---|---|
+| Grafana ("Moviebot 운영" 대시보드) | http://localhost:3000 (`.env` 의 Grafana 계정) |
+| Prometheus | http://localhost:9090 |
+
+Prometheus·Grafana 는 `127.0.0.1` 에만 열립니다. 서버에 배포했다면 SSH 터널로 접속합니다: `ssh -L 3000:localhost:3000 사용자@서버`
+
+### 5. 종료
 
 ```bash
-curl localhost:8081/actuator/health       # 로컬 실행 시
-curl localhost:8081/actuator/prometheus   # 지표 (notification_*, crawl_*)
+docker compose down             # 컨테이너 종료 (데이터는 볼륨에 남음)
+docker compose down -v          # 데이터까지 삭제
 ```
 
-`docker compose up -d` 로 Prometheus(`127.0.0.1:9090`)와 Grafana(`127.0.0.1:3000`, "Moviebot 운영" 대시보드)가 함께 뜹니다. Grafana 알림 규칙(앱 다운·발송 지연·발송 포기·크롤링 실패·주기 제한 시간 초과)은 `.env` 의 `GRAFANA_ALERT_TELEGRAM_CHAT_ID` 로 텔레그램 발송됩니다. 설정은 `monitoring/` 에 있습니다.
+### 개발용: 로컬 실행 · 테스트
+
+Docker 가 켜져 있으면 MySQL 8.4 컨테이너가 자동으로 뜨고 종료 시 정리됩니다 (Testcontainers). `bootTestRun` 은 `.env` 의 봇 토큰을 읽습니다.
+
+```bash
+./gradlew bootTestRun           # 앱 실행
+./gradlew test                  # 전체 테스트 (실제 텔레그램·CGV 는 호출하지 않음)
+```
