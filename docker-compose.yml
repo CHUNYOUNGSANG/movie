@@ -10,7 +10,7 @@ services:
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"   # 이 컴퓨터(서버)에서만 접속. 0.0.0.0 이면 같은 네트워크의 다른 기기도 DB 에 붙는다
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -41,7 +41,7 @@ services:
     volumes:
       - playwright-browsers:/playwright-browsers
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"   # REST API 도 이 컴퓨터에서만. 밖에 열려면 앞단에 HTTPS 리버스 프록시를 둔다
       # 8081(관리용 /actuator)은 일부러 공개하지 않음: 같은 docker 네트워크에서 http://app:8081/actuator/prometheus 로 수집
     restart: unless-stopped
     # 종료 시 진행 중인 크롤링 주기가 정리되도록 SIGTERM 후 강제 종료까지 기다리는 시간 (기본 10초)
